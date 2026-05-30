@@ -47,9 +47,9 @@
       Wallet, PieChart, Plus, List, Settings, Bell, Coffee, Car, 
       ShoppingBag, Film, FileText, DollarSign, ArrowLeft, Calendar, 
       ChevronLeft, ChevronRight, TrendingDown, TrendingUp, Home, 
-      Target, Globe, CreditCard, RefreshCw, MoreHorizontal, ArrowRightLeft,
+      Target, Globe, CreditCard, RefreshCw, ArrowRightLeft,
       Heart, Book, Repeat, Zap, Landmark, Shield, LogOut, ChevronRight as ChevronRightIcon,
-      User, HelpCircle, Info, Loader2, Trophy, Clock, AlertCircle, Trash2, Rocket
+      User, HelpCircle, Info, Loader2, Trophy, AlertCircle, Trash2, Rocket
     } from 'https://esm.sh/lucide-react@0.292.0?deps=react@18.2.0';
 
     // --- FIREBASE SETUP ---
@@ -63,7 +63,26 @@
       getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc, enableIndexedDbPersistence
     } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 
-    // IMPORTANT: Replace with your Firebase config if needed.
+    // Robust Local Storage Wrappers to prevent global execution halts
+    const safeLocalGet = (key, fallback) => {
+      try {
+        const item = window.localStorage.getItem(key);
+        if (item === null || item === undefined) return fallback;
+        const parsed = JSON.parse(item);
+        return parsed !== null && parsed !== undefined ? parsed : fallback;
+      } catch (e) {
+        return fallback;
+      }
+    };
+
+    const safeLocalSet = (key, value) => {
+      try {
+        window.localStorage.setItem(key, typeof value === 'string' ? value : JSON.stringify(value));
+      } catch (e) {
+        // Ignore quota/security errors
+      }
+    };
+
     const githubFirebaseConfig = {
       apiKey: "AIzaSyDOwnNc4ZOlcomQkyvc2wRcfk1NICBkhQs",
       authDomain: "cashlyapp-25956.firebaseapp.com",
@@ -73,17 +92,27 @@
       appId: "1:591724211566:web:cec1db7bfaf452cc5d257f"
     };
 
-    const isPreview = typeof __firebase_config !== 'undefined';
-    const firebaseConfig = isPreview ? JSON.parse(__firebase_config) : githubFirebaseConfig;
-    const appId = isPreview ? __app_id : 'cashly-github-app';
+    const getFirebaseConfig = () => {
+      if (typeof __firebase_config !== 'undefined') {
+        if (typeof __firebase_config === 'string') {
+          try { return JSON.parse(__firebase_config); } catch(e) {}
+        } else if (typeof __firebase_config === 'object') {
+          return __firebase_config;
+        }
+      }
+      return githubFirebaseConfig;
+    };
+
+    const firebaseConfig = getFirebaseConfig();
+    const appId = (typeof __app_id !== 'undefined') ? __app_id : 'cashly-github-app';
 
     let app, auth, db;
     try {
-      if (firebaseConfig.apiKey !== "YOUR_API_KEY") {
+      if (firebaseConfig && firebaseConfig.apiKey && firebaseConfig.apiKey !== "YOUR_API_KEY") {
         app = initializeApp(firebaseConfig);
         auth = getAuth(app);
         db = getFirestore(app);
-        try { enableIndexedDbPersistence(db).catch(err => console.warn("Persistence error:", err.code)); } 
+        try { enableIndexedDbPersistence(db).catch(err => console.warn("Persistence warning:", err.code)); } 
         catch (e) { console.warn("Could not enable offline persistence"); }
       }
     } catch(e) { console.error("Firebase init failed:", e); }
@@ -128,7 +157,11 @@
     const COLOR_MAP = { 'bg-orange-500': '#f97316', 'bg-blue-500': '#3b82f6', 'bg-purple-500': '#a855f7', 'bg-pink-500': '#ec4899', 'bg-rose-500': '#f43f5e', 'bg-indigo-500': '#6366f1', 'bg-red-500': '#ef4444', 'bg-cyan-500': '#06b6d4', 'bg-violet-500': '#8b5cf6', 'bg-yellow-500': '#eab308', 'bg-emerald-500': '#10b981' };
 
     const formatCurrency = (amount, currencyCode = 'USD') => {
-      return new Intl.NumberFormat('en-US', { style: 'currency', currency: currencyCode, minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(amount || 0);
+      try {
+        return new Intl.NumberFormat('en-US', { style: 'currency', currency: currencyCode || 'USD', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(amount || 0);
+      } catch (e) {
+        return `$${parseFloat(amount || 0).toFixed(2)}`;
+      }
     };
 
     const formatDateHeader = (dateString) => {
@@ -146,12 +179,13 @@
       const [authLoading, setAuthLoading] = useState(true);
       const [authMode, setAuthMode] = useState('welcome'); 
       
-      const [transactions, setTransactions] = useState([]);
-      const [wallets, setWallets] = useState([]);
-      const [budgets, setBudgets] = useState([]);
-      const [goals, setGoals] = useState([]);
-      const [bills, setBills] = useState([]);
-      const [preferences, setPreferences] = useState({ baseCurrency: 'USD', isDarkMode: false, faceId: false, securityPin: null, budgetAlerts: true });
+      // Initialize states gracefully directly from safe local helpers
+      const [transactions, setTransactions] = useState(() => safeLocalGet('cashly_transactions', []));
+      const [wallets, setWallets] = useState(() => safeLocalGet('cashly_wallets', [{ id: 'w1', name: 'Main Wallet', currency: 'USD', iconString: 'Wallet' }]));
+      const [budgets, setBudgets] = useState(() => safeLocalGet('cashly_budgets', []));
+      const [goals, setGoals] = useState(() => safeLocalGet('cashly_goals', []));
+      const [bills, setBills] = useState(() => safeLocalGet('cashly_bills', []));
+      const [preferences, setPreferences] = useState(() => safeLocalGet('cashly_prefs', { baseCurrency: 'USD', isDarkMode: false, faceId: false, securityPin: null, budgetAlerts: true }));
       
       const [activeWalletId, setActiveWalletId] = useState('all'); 
       const [currentTab, setCurrentTab] = useState('transactions');
@@ -166,18 +200,15 @@
       const [isAddBillOpen, setIsAddBillOpen] = useState(false);
 
       // SECURITY STATES
-      const [isLocked, setIsLocked] = useState(() => !!(JSON.parse(localStorage.getItem('cashly_prefs')) || {}).securityPin);
+      const [isLocked, setIsLocked] = useState(() => {
+        const prefs = safeLocalGet('cashly_prefs', {});
+        return !!(prefs && prefs.securityPin);
+      });
       const [isPinSetupOpen, setIsPinSetupOpen] = useState(false);
 
       useEffect(() => {
         if (isMissingConfig) {
-          const loadLocal = (key, defaultVal) => JSON.parse(localStorage.getItem(key)) || defaultVal;
-          setWallets(loadLocal('cashly_wallets', [{ id: 'w1', name: 'Main Wallet', currency: 'USD', iconString: 'Wallet' }]));
-          setTransactions(loadLocal('cashly_transactions', []));
-          setBudgets(loadLocal('cashly_budgets', []));
-          setGoals(loadLocal('cashly_goals', []));
-          setBills(loadLocal('cashly_bills', []));
-          setPreferences(loadLocal('cashly_prefs', { baseCurrency: 'USD', isDarkMode: false, faceId: true, budgetAlerts: true }));
+          // States are already pre-loaded via initializers
           setAuthLoading(false);
           setUser({ uid: 'local', email: 'Local Device Mode', displayName: 'Offline User' });
           setAuthMode('authenticated');
@@ -224,7 +255,7 @@
         return () => { unsubWallets(); unsubPrefs(); unsubTx(); unsubBg(); unsubGl(); unsubBl(); };
       }, [user, isMissingConfig]);
 
-      const activeWallet = activeWalletId === 'all' ? { id: 'all', name: 'All Wallets', currency: preferences.baseCurrency } : wallets.find(w => w.id === activeWalletId) || wallets[0] || { name: 'Loading...', currency: 'USD' };
+      const activeWallet = activeWalletId === 'all' ? { id: 'all', name: 'All Wallets', currency: preferences?.baseCurrency || 'USD' } : wallets.find(w => w.id === activeWalletId) || wallets[0] || { name: 'Loading...', currency: 'USD' };
       
       const cycleWallet = () => {
         vibrate();
@@ -263,7 +294,7 @@
           }
         });
         return { totalIncome: inc, totalExpense: exp, balance: bal };
-      }, [viewTransactions, monthTransactions, activeWalletId, wallets, preferences.baseCurrency]);
+      }, [viewTransactions, monthTransactions, activeWalletId, wallets, preferences?.baseCurrency]);
 
       const upcomingBills = useMemo(() => {
         const today = new Date();
@@ -278,11 +309,11 @@
       const saveToFirebase = async (collectionName, data, id = null) => {
         if (isMissingConfig) {
           const newData = { ...data, id: id || Date.now().toString() };
-          if (collectionName === 'transactions') { setTransactions(p => { const n = [newData, ...p]; localStorage.setItem('cashly_transactions', JSON.stringify(n)); return n; }); }
-          if (collectionName === 'wallets') { setWallets(p => { const n = [...p, newData]; localStorage.setItem('cashly_wallets', JSON.stringify(n)); return n; }); }
-          if (collectionName === 'budgets') { setBudgets(p => { const n = [...p, newData]; localStorage.setItem('cashly_budgets', JSON.stringify(n)); return n; }); }
-          if (collectionName === 'goals') { setGoals(p => { const n = id ? p.map(g => g.id === id ? {...g, ...data} : g) : [...p, newData]; localStorage.setItem('cashly_goals', JSON.stringify(n)); return n; }); }
-          if (collectionName === 'bills') { setBills(p => { const n = [...p, newData]; localStorage.setItem('cashly_bills', JSON.stringify(n)); return n; }); }
+          if (collectionName === 'transactions') { setTransactions(p => { const n = [newData, ...p]; safeLocalSet('cashly_transactions', n); return n; }); }
+          if (collectionName === 'wallets') { setWallets(p => { const n = [...p, newData]; safeLocalSet('cashly_wallets', n); return n; }); }
+          if (collectionName === 'budgets') { setBudgets(p => { const n = [...p, newData]; safeLocalSet('cashly_budgets', n); return n; }); }
+          if (collectionName === 'goals') { setGoals(p => { const n = id ? p.map(g => g.id === id ? {...g, ...data} : g) : [...p, newData]; safeLocalSet('cashly_goals', n); return n; }); }
+          if (collectionName === 'bills') { setBills(p => { const n = [...p, newData]; safeLocalSet('cashly_bills', n); return n; }); }
           return;
         }
 
@@ -295,7 +326,7 @@
 
       const deleteFromFirebase = async (collectionName, id) => {
         if (isMissingConfig) {
-          if (collectionName === 'wallets') { setWallets(p => { const n = p.filter(w => w.id !== id); localStorage.setItem('cashly_wallets', JSON.stringify(n)); return n; }); }
+          if (collectionName === 'wallets') { setWallets(p => { const n = p.filter(w => w.id !== id); safeLocalSet('cashly_wallets', n); return n; }); }
           return;
         }
         if (!user) return;
@@ -304,7 +335,11 @@
       };
 
       const updatePreference = (key, value) => {
-        setPreferences(p => { const next = { ...p, [key]: value }; if (isMissingConfig) localStorage.setItem('cashly_prefs', JSON.stringify(next)); return next; });
+        setPreferences(p => { 
+          const next = { ...p, [key]: value }; 
+          if (isMissingConfig) safeLocalSet('cashly_prefs', next); 
+          return next; 
+        });
         if (!isMissingConfig) saveToFirebase('settings', { [key]: value }, 'preferences');
       };
 
@@ -316,7 +351,7 @@
       };
 
       return (
-        <div className={preferences.isDarkMode ? 'dark' : ''}>
+        <div className={preferences?.isDarkMode ? 'dark' : ''}>
           <div className="min-h-screen bg-black sm:bg-gray-900 dark:sm:bg-black flex items-center justify-center font-sans sm:p-4 text-gray-900 dark:text-white transition-colors duration-300 overflow-y-auto">
             
             {authLoading ? (
@@ -327,7 +362,7 @@
               <div className="w-full max-w-md h-[100dvh] sm:h-[100vh] sm:max-h-[850px] sm:rounded-[40px] sm:border-[8px] border-gray-800 dark:border-gray-700 bg-[#F2F2F7] dark:bg-black overflow-hidden relative flex flex-col shadow-2xl transition-colors duration-300">
                 
                 {isLocked ? (
-                  <LockScreen pin={preferences.securityPin || (JSON.parse(localStorage.getItem('cashly_prefs'))||{}).securityPin} onUnlock={() => setIsLocked(false)} />
+                  <LockScreen pin={preferences?.securityPin} onUnlock={() => setIsLocked(false)} />
                 ) : (
                   <>
                     {!user && authMode === 'welcome' && <WelcomeScreen onNavigate={(m) => {vibrate(); setAuthMode(m)}} />}
@@ -422,7 +457,7 @@
                             <PlanningView transactions={monthTransactions} budgets={budgets.filter(b=>activeWalletId==='all'||b.walletId===activeWalletId)} goals={goals} currency={activeWallet.currency} formatCurrency={formatCurrency} onAddBudget={() => {vibrate(); setIsAddBudgetOpen(true)}} onAddGoal={() => {vibrate(); setIsAddGoalOpen(true)}} onFundGoal={(g) => {vibrate(); setIsFundGoalOpen(g)}} />
                           )}
                           {currentTab === 'settings' && (
-                            <SettingsView user={user} wallets={wallets} prefs={preferences} setPref={updatePreference} onAddWallet={() => {vibrate(); setIsAddWalletOpen(true)}} onDeleteWallet={(id) => { deleteFromFirebase('wallets', id); if(activeWalletId === id) setActiveWalletId('all'); }} onLogout={() => {vibrate(); auth ? signOut(auth) : setAuthMode('welcome')}} onEnableSecurity={() => {vibrate(); setIsPinSetupOpen(true)}} />
+                            <SettingsView user={user} wallets={wallets} prefs={preferences || {}} setPref={updatePreference} onAddWallet={() => {vibrate(); setIsAddWalletOpen(true)}} onDeleteWallet={(id) => { deleteFromFirebase('wallets', id); if(activeWalletId === id) setActiveWalletId('all'); }} onLogout={() => {vibrate(); auth ? signOut(auth) : setAuthMode('welcome')}} onEnableSecurity={() => {vibrate(); setIsPinSetupOpen(true)}} />
                           )}
                         </div>
 
@@ -614,7 +649,7 @@
             <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider px-2">Top Spending</h3>
             <div className="bg-white dark:bg-[#1C1C1E] rounded-3xl shadow-[0_2px_10px_rgba(0,0,0,0.03)] border border-gray-100 dark:border-[#2C2C2E] overflow-hidden divide-y divide-gray-50 dark:divide-[#2C2C2E] transition-colors duration-300">
               {analyticsData.map((data, i) => {
-                const Icon = data.icon;
+                const Icon = data.icon || HelpCircle;
                 return (
                   <div key={i} className="flex items-center gap-4 p-4">
                     <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white flex-shrink-0 ${data.bg}`}><Icon className="w-5 h-5" /></div>
@@ -899,7 +934,7 @@
          } catch(e) { console.log("Biometric failed, use PIN", e); }
       };
 
-      useEffect(() => { handleBiometric(); }, []); // Auto-trigger on load
+      useEffect(() => { handleBiometric(); }, []);
 
       return (
          <div className="w-full h-full bg-[#F2F2F7] dark:bg-black flex flex-col items-center justify-center p-6 relative animate-in fade-in z-50">
@@ -1017,9 +1052,9 @@
                   </div>
                 ) : (
                   <div className="bg-white dark:bg-[#1C1C1E] p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-[#2C2C2E] flex items-center justify-between gap-2">
-                    <div className="flex-1"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2 block">From</label><select value={fromWalletId} onChange={e => setFromWalletId(e.target.value)} className="w-full bg-gray-50 dark:bg-[#2C2C2E] border border-gray-100 dark:border-gray-700 rounded-xl px-3 py-2 text-sm font-semibold text-gray-800 dark:text-gray-200 outline-none">{wallets.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</select></div>
+                    <div className="flex-1"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2 block">From</label><select value={fromWalletId} onChange={e => setFromWalletId(e.target.value)} className="w-full bg-gray-50 dark:bg-[#2C2C2E] border border-gray-100 dark:border-gray-700 rounded-xl px-3 py-2 text-sm font-semibold text-gray-800 dark:text-gray-200 outline-none focus:border-emerald-500">{wallets.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</select></div>
                     <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-[#2C2C2E] flex items-center justify-center text-gray-400 mt-5 shadow-inner"><ArrowRightLeft className="w-4 h-4" /></div>
-                    <div className="flex-1"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2 block">To</label><select value={toWalletId} onChange={e => setToWalletId(e.target.value)} className="w-full bg-gray-50 dark:bg-[#2C2C2E] border border-gray-100 dark:border-gray-700 rounded-xl px-3 py-2 text-sm font-semibold text-gray-800 dark:text-gray-200 outline-none">{wallets.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</select></div>
+                    <div className="flex-1"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2 block">To</label><select value={toWalletId} onChange={e => setToWalletId(e.target.value)} className="w-full bg-gray-50 dark:bg-[#2C2C2E] border border-gray-100 dark:border-gray-700 rounded-xl px-3 py-2 text-sm font-semibold text-gray-800 dark:text-gray-200 outline-none focus:border-emerald-500">{wallets.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</select></div>
                   </div>
                 )}
                 {type !== 'transfer' && (
@@ -1091,7 +1126,6 @@
       );
     }
     
-    // AddGoalModal, FundGoalModal, NotificationsModal, AddBillModal follow same spring-up structure
     function AddGoalModal({ isOpen, onClose, onSave }) {
       const [name, setName] = useState(''); const [target, setTarget] = useState(''); const [icon, setIcon] = useState('🏖️'); const [color, setColor] = useState('from-blue-400 to-blue-600');
       if (!isOpen) return null;
