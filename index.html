@@ -23,6 +23,19 @@
   <!-- Babel for JSX compilation -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <style>
+    /* Prevent overall bounce / pull-to-refresh on iOS */
+    html, body {
+      overscroll-behavior: none;
+      overflow: hidden;
+      width: 100%;
+      height: 100%;
+    }
+    
+    /* Make sure scrolling elements contain the bounce inside them */
+    .overflow-y-auto {
+      overscroll-behavior-y: contain;
+    }
+
     .scrollbar-hide::-webkit-scrollbar { display: none; }
     .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
     .pb-safe { padding-bottom: env(safe-area-inset-bottom, 20px); }
@@ -37,8 +50,8 @@
     @keyframes slideInRight { to { transform: translateX(0); } }
   </style>
 </head>
-<body class="bg-black text-gray-900">
-  <div id="root"></div>
+<body class="bg-black text-gray-900 overscroll-none fixed inset-0 w-full h-full">
+  <div id="root" class="w-full h-full"></div>
 
   <script type="text/babel" data-type="module">
     import React, { useState, useEffect, useMemo } from 'https://esm.sh/react@18.2.0';
@@ -380,8 +393,8 @@
       };
 
       return (
-        <div className={preferences?.isDarkMode ? 'dark' : ''}>
-          <div className="min-h-screen bg-black sm:bg-gray-900 dark:sm:bg-black flex items-center justify-center font-sans sm:p-4 text-gray-900 dark:text-white transition-colors duration-300 overflow-y-auto">
+        <div className={preferences?.isDarkMode ? 'dark w-full h-full' : 'w-full h-full'}>
+          <div className="w-full h-full bg-black sm:bg-gray-900 dark:sm:bg-black flex items-center justify-center font-sans sm:p-4 text-gray-900 dark:text-white transition-colors duration-300 overflow-hidden">
             
             {authLoading ? (
               <div className="w-full max-w-md h-[100dvh] sm:h-[100vh] sm:max-h-[850px] sm:rounded-[40px] bg-emerald-500 flex items-center justify-center shadow-2xl">
