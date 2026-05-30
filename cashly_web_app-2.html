@@ -1,0 +1,1166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#10b981">
+  <title>Cashly - Personal Finance</title>
+  
+  <!-- Add the PWA Manifest Link -->
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Color_icon_green.svg/512px-Color_icon_green.svg.png">
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: { extend: {} }
+    }
+  </script>
+  
+  <!-- Babel for JSX compilation in the browser -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    /* Hide scrollbar for clean UI */
+    .scrollbar-hide::-webkit-scrollbar { display: none; }
+    .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+    
+    /* Safe area padding for iPhones */
+    .pb-safe { padding-bottom: env(safe-area-inset-bottom, 20px); }
+    
+    /* Smooth transitions */
+    .animate-in { animation: animateIn 0.3s ease-out forwards; }
+    .fade-in { opacity: 0; animation-name: fadeIn; }
+    .slide-in-from-bottom-full { transform: translateY(100%); animation-name: slideInBottom; }
+    .slide-in-from-right { transform: translateX(100%); animation-name: slideInRight; }
+    
+    @keyframes fadeIn { to { opacity: 1; } }
+    @keyframes slideInBottom { to { transform: translateY(0); } }
+    @keyframes slideInRight { to { transform: translateX(0); } }
+  </style>
+</head>
+<body class="bg-black text-gray-900">
+  <div id="root"></div>
+
+  <script type="text/babel" data-type="module">
+    import React, { useState, useEffect, useMemo } from 'https://esm.sh/react@18.2.0';
+    import { createRoot } from 'https://esm.sh/react-dom@18.2.0/client';
+    import {
+      Wallet, PieChart, Plus, List, Settings, Bell, Coffee, Car, 
+      ShoppingBag, Film, FileText, DollarSign, ArrowLeft, Calendar, 
+      ChevronLeft, ChevronRight, TrendingDown, TrendingUp, Home, 
+      Target, Globe, CreditCard, RefreshCw, MoreHorizontal, ArrowRightLeft,
+      Heart, Book, Repeat, Zap, Landmark, Shield, LogOut, ChevronRight as ChevronRightIcon,
+      User, HelpCircle, Info, Loader2, Trophy, Clock, AlertCircle
+    } from 'https://esm.sh/lucide-react@0.292.0?deps=react@18.2.0';
+
+    // --- FIREBASE SETUP ---
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
+    import { 
+      getAuth, onAuthStateChanged, signInWithCustomToken, signInAnonymously, 
+      signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword,
+      GoogleAuthProvider, signInWithPopup, sendPasswordResetEmail
+    } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
+    import { 
+      getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc, updateDoc, enableIndexedDbPersistence
+    } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+
+    // IMPORTANT: When hosting on GitHub, replace these empty strings with your free Firebase project config
+    const githubFirebaseConfig = {
+      apiKey: "AIzaSyDOwnNc4ZOlcomQkyvc2wRcfk1NICBkhQs",
+      authDomain: "cashlyapp-25956.firebaseapp.com",
+      projectId: "cashlyapp-25956",
+      storageBucket: "cashlyapp-25956.firebasestorage.app",
+      messagingSenderId: "591724211566",
+      appId: "1:591724211566:web:cec1db7bfaf452cc5d257f"
+    };
+
+    const isPreview = typeof __firebase_config !== 'undefined';
+    const firebaseConfig = isPreview ? JSON.parse(__firebase_config) : githubFirebaseConfig;
+    const appId = isPreview ? __app_id : 'cashly-github-app';
+
+    let app, auth, db;
+    try {
+      if (firebaseConfig.apiKey !== "YOUR_API_KEY") {
+        app = initializeApp(firebaseConfig);
+        auth = getAuth(app);
+        db = getFirestore(app);
+        
+        try {
+          enableIndexedDbPersistence(db).catch(err => console.warn("Persistence error:", err.code));
+        } catch (e) { console.warn("Could not enable offline persistence"); }
+      }
+    } catch(e) {
+      console.error("Firebase init failed:", e);
+    }
+
+    // --- MOCK DATA & CONFIG ---
+    const EX_RATES = { USD: 1, EUR: 1.08, GBP: 1.25, JPY: 0.0066, INR: 0.012 };
+
+    const CATEGORIES = {
+      food: { id: 'food', name: 'Food & Drink', icon: Coffee, bg: 'bg-orange-500', type: 'expense' },
+      transport: { id: 'transport', name: 'Transport', icon: Car, bg: 'bg-blue-500', type: 'expense' },
+      shopping: { id: 'shopping', name: 'Shopping', icon: ShoppingBag, bg: 'bg-purple-500', type: 'expense' },
+      entertainment: { id: 'entertainment', name: 'Entertainment', icon: Film, bg: 'bg-pink-500', type: 'expense' },
+      bills: { id: 'bills', name: 'Bills', icon: FileText, bg: 'bg-rose-500', type: 'expense' },
+      home: { id: 'home', name: 'Home', icon: Home, bg: 'bg-indigo-500', type: 'expense' },
+      health: { id: 'health', name: 'Health', icon: Heart, bg: 'bg-red-500', type: 'expense' },
+      education: { id: 'education', name: 'Education', icon: Book, bg: 'bg-cyan-500', type: 'expense' },
+      subscriptions: { id: 'subscriptions', name: 'Subscriptions', icon: Repeat, bg: 'bg-violet-500', type: 'expense' },
+      utilities: { id: 'utilities', name: 'Utilities', icon: Zap, bg: 'bg-yellow-500', type: 'expense' },
+      salary: { id: 'salary', name: 'Salary', icon: DollarSign, bg: 'bg-emerald-500', type: 'income' },
+      gifts: { id: 'gifts', name: 'Gifts', icon: DollarSign, bg: 'bg-teal-500', type: 'income' },
+      investment: { id: 'investment', name: 'Investment', icon: Landmark, bg: 'bg-emerald-600', type: 'income' },
+    };
+
+    const ICON_MAP = { Wallet, Globe, Target, CreditCard, DollarSign, Trophy, Car, Home };
+    const COLOR_MAP = { 'bg-orange-500': '#f97316', 'bg-blue-500': '#3b82f6', 'bg-purple-500': '#a855f7', 'bg-pink-500': '#ec4899', 'bg-rose-500': '#f43f5e', 'bg-indigo-500': '#6366f1', 'bg-red-500': '#ef4444', 'bg-cyan-500': '#06b6d4', 'bg-violet-500': '#8b5cf6', 'bg-yellow-500': '#eab308', 'bg-emerald-500': '#10b981' };
+
+    const formatCurrency = (amount, currencyCode = 'USD') => {
+      return new Intl.NumberFormat('en-US', { style: 'currency', currency: currencyCode, minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(amount || 0);
+    };
+
+    const formatDateHeader = (dateString) => {
+      const date = new Date(dateString);
+      const today = new Date();
+      const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
+      if (date.toDateString() === today.toDateString()) return 'Today';
+      if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+      return new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).format(date);
+    };
+
+    // --- MAIN COMPONENT ---
+    function App() {
+      const [user, setUser] = useState(null);
+      const [authLoading, setAuthLoading] = useState(true);
+      const [authMode, setAuthMode] = useState('welcome'); 
+      const [isMissingConfig, setIsMissingConfig] = useState(!auth);
+      
+      const [transactions, setTransactions] = useState([]);
+      const [wallets, setWallets] = useState([]);
+      const [budgets, setBudgets] = useState([]);
+      const [goals, setGoals] = useState([]);
+      const [bills, setBills] = useState([]);
+      const [preferences, setPreferences] = useState({ baseCurrency: 'USD', isDarkMode: false, faceId: true, budgetAlerts: true });
+      
+      const [activeWalletId, setActiveWalletId] = useState('all'); 
+      const [currentTab, setCurrentTab] = useState('transactions');
+      const [currentMonth, setCurrentMonth] = useState(new Date());
+      
+      const [isAddOpen, setIsAddOpen] = useState(false);
+      const [isAddWalletOpen, setIsAddWalletOpen] = useState(false);
+      const [isAddBudgetOpen, setIsAddBudgetOpen] = useState(false);
+      const [isAddGoalOpen, setIsAddGoalOpen] = useState(false);
+      const [isFundGoalOpen, setIsFundGoalOpen] = useState(null); 
+      const [isNotifOpen, setIsNotifOpen] = useState(false);
+      const [isAddBillOpen, setIsAddBillOpen] = useState(false);
+
+      // Setup initial state from localStorage if running on GitHub without keys
+      useEffect(() => {
+        if (isMissingConfig) {
+          const loadLocal = (key, defaultVal) => JSON.parse(localStorage.getItem(key)) || defaultVal;
+          
+          setWallets(loadLocal('cashly_wallets', [{ id: 'w1', name: 'Main Wallet', currency: 'USD', iconString: 'Wallet' }]));
+          setTransactions(loadLocal('cashly_transactions', []));
+          setBudgets(loadLocal('cashly_budgets', []));
+          setGoals(loadLocal('cashly_goals', []));
+          setBills(loadLocal('cashly_bills', []));
+          setPreferences(loadLocal('cashly_prefs', { baseCurrency: 'USD', isDarkMode: false, faceId: true, budgetAlerts: true }));
+          
+          setAuthLoading(false);
+          setUser({ uid: 'local', email: 'Local Device Mode', displayName: 'Offline User' });
+          setAuthMode('authenticated');
+          return;
+        }
+
+        const initAuth = async () => {
+          try {
+            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) await signInWithCustomToken(auth, __initial_auth_token);
+            else await signInAnonymously(auth);
+          } catch (err) { console.error('Initial Auth Error', err); setAuthLoading(false); }
+        };
+        initAuth();
+
+        const unsubscribe = onAuthStateChanged(auth, (usr) => {
+          setUser(usr);
+          setAuthLoading(false);
+          if (!usr) setAuthMode('welcome');
+        });
+        return () => unsubscribe();
+      }, [isMissingConfig]);
+
+      useEffect(() => {
+        if (!user || isMissingConfig) return;
+
+        const syncCollection = (collName, setter) => {
+          return onSnapshot(collection(db, 'artifacts', appId, 'users', user.uid, collName), snap => setter(snap.docs.map(d => ({ id: d.id, ...d.data() }))), err => console.error(err));
+        };
+
+        const unsubWallets = onSnapshot(collection(db, 'artifacts', appId, 'users', user.uid, 'wallets'), async (snap) => {
+          if (snap.empty) await setDoc(doc(collection(db, 'artifacts', appId, 'users', user.uid, 'wallets'), 'w1'), { name: 'Main Wallet', currency: 'USD', iconString: 'Wallet' });
+          else setWallets(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        });
+
+        const unsubPrefs = onSnapshot(doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'preferences'), (doc) => {
+          if (doc.exists()) setPreferences(doc.data());
+        });
+
+        const unsubTx = syncCollection('transactions', setTransactions);
+        const unsubBg = syncCollection('budgets', setBudgets);
+        const unsubGl = syncCollection('goals', setGoals);
+        const unsubBl = syncCollection('bills', setBills);
+
+        return () => { unsubWallets(); unsubPrefs(); unsubTx(); unsubBg(); unsubGl(); unsubBl(); };
+      }, [user, isMissingConfig]);
+
+      const activeWallet = activeWalletId === 'all' ? { id: 'all', name: 'All Wallets', currency: preferences.baseCurrency } : wallets.find(w => w.id === activeWalletId) || wallets[0] || { name: 'Loading...', currency: 'USD' };
+      
+      const cycleWallet = () => {
+        if (wallets.length === 0) return;
+        const sequence = ['all', ...wallets.map(w => w.id)];
+        setActiveWalletId(sequence[(sequence.indexOf(activeWalletId) + 1) % sequence.length]);
+      };
+
+      const viewTransactions = useMemo(() => transactions.filter(t => activeWalletId === 'all' || (t.type === 'transfer' ? t.fromWalletId === activeWalletId || t.toWalletId === activeWalletId : t.walletId === activeWalletId)), [transactions, activeWalletId]);
+      
+      const monthTransactions = useMemo(() => viewTransactions.filter(t => {
+        const tDate = new Date(t.date); return tDate.getMonth() === currentMonth.getMonth() && tDate.getFullYear() === currentMonth.getFullYear();
+      }).sort((a, b) => new Date(b.date) - new Date(a.date)), [viewTransactions, currentMonth]);
+
+      const { totalIncome, totalExpense, balance } = useMemo(() => {
+        let inc = 0, exp = 0, bal = 0;
+        const convert = (amt, wId) => activeWalletId === 'all' ? amt * (EX_RATES[wallets.find(w=>w.id===wId)?.currency] || 1) : amt;
+        
+        viewTransactions.forEach(t => {
+          let amt = t.type !== 'transfer' ? convert(t.amount, t.walletId) : 0;
+          if (t.type === 'income') bal += amt;
+          if (t.type === 'expense') bal -= amt;
+          if (t.type === 'transfer' && activeWalletId !== 'all') {
+             if (t.fromWalletId === activeWalletId) bal -= t.amount;
+             if (t.toWalletId === activeWalletId) bal += (t.amountConverted || t.amount);
+          }
+        });
+
+        monthTransactions.forEach(t => {
+          let amt = t.type !== 'transfer' ? convert(t.amount, t.walletId) : 0;
+          if (t.type === 'income') inc += amt;
+          if (t.type === 'expense') exp += amt;
+          if (t.type === 'transfer' && activeWalletId !== 'all') {
+             if (t.fromWalletId === activeWalletId) exp += t.amount;
+             if (t.toWalletId === activeWalletId) inc += (t.amountConverted || t.amount);
+          }
+        });
+        return { totalIncome: inc, totalExpense: exp, balance: bal };
+      }, [viewTransactions, monthTransactions, activeWalletId, wallets, preferences.baseCurrency]);
+
+      const upcomingBills = useMemo(() => {
+        const today = new Date();
+        return bills.filter(bill => {
+          let billDate = new Date(today.getFullYear(), today.getMonth(), bill.dueDate);
+          if (billDate < today) billDate.setMonth(billDate.getMonth() + 1);
+          const diffDays = Math.ceil(Math.abs(billDate - today) / (1000 * 60 * 60 * 24));
+          return diffDays <= 7;
+        }).sort((a,b) => a.dueDate - b.dueDate);
+      }, [bills]);
+
+      const saveToFirebase = async (collectionName, data, id = null) => {
+        if (isMissingConfig) {
+          const newData = { ...data, id: id || Date.now().toString() };
+          if (collectionName === 'transactions') {
+             setTransactions(prev => { const next = [newData, ...prev]; localStorage.setItem('cashly_transactions', JSON.stringify(next)); return next; });
+          }
+          if (collectionName === 'wallets') {
+             setWallets(prev => { const next = [...prev, newData]; localStorage.setItem('cashly_wallets', JSON.stringify(next)); return next; });
+          }
+          if (collectionName === 'budgets') {
+             setBudgets(prev => { const next = [...prev, newData]; localStorage.setItem('cashly_budgets', JSON.stringify(next)); return next; });
+          }
+          if (collectionName === 'goals') {
+             setGoals(prev => { 
+               const next = id ? prev.map(g => g.id === id ? {...g, ...data} : g) : [...prev, newData]; 
+               localStorage.setItem('cashly_goals', JSON.stringify(next)); 
+               return next; 
+             });
+          }
+          if (collectionName === 'bills') {
+             setBills(prev => { const next = [...prev, newData]; localStorage.setItem('cashly_bills', JSON.stringify(next)); return next; });
+          }
+          return;
+        }
+
+        if (!user) return;
+        try {
+          const ref = id ? doc(db, 'artifacts', appId, 'users', user.uid, collectionName, id) : doc(collection(db, 'artifacts', appId, 'users', user.uid, collectionName));
+          await setDoc(ref, { ...data, id: ref.id }, { merge: true });
+        } catch (err) { console.error(`Error saving ${collectionName}`, err); }
+      };
+
+      const updatePreference = (key, value) => {
+        setPreferences(p => {
+           const next = { ...p, [key]: value };
+           if (isMissingConfig) localStorage.setItem('cashly_prefs', JSON.stringify(next));
+           return next;
+        });
+        if (!isMissingConfig) saveToFirebase('settings', { [key]: value }, 'preferences');
+      };
+
+      const getHeaderStyle = () => {
+        if (activeWalletId === 'all') return 'bg-gradient-to-br from-gray-900 to-gray-800 dark:from-black dark:to-gray-950';
+        if (currentTab === 'planning') return 'bg-gradient-to-br from-indigo-600 to-purple-600 dark:from-indigo-900 dark:to-purple-900';
+        if (currentTab === 'settings') return 'bg-[#F2F2F7] dark:bg-black text-gray-900 dark:text-white';
+        return 'bg-gradient-to-br from-emerald-500 to-teal-600 dark:from-emerald-700 dark:to-teal-900';
+      };
+
+      return (
+        <div className={preferences.isDarkMode ? 'dark' : ''}>
+          <div className="min-h-screen bg-black sm:bg-gray-900 dark:sm:bg-black flex items-center justify-center font-sans sm:p-4 text-gray-900 dark:text-white transition-colors duration-300 overflow-y-auto">
+            
+            {authLoading ? (
+              <div className="w-full max-w-md h-[100dvh] sm:h-[100vh] sm:max-h-[850px] sm:rounded-[40px] bg-emerald-500 flex items-center justify-center shadow-2xl">
+                <Loader2 className="w-12 h-12 text-white animate-spin" />
+              </div>
+            ) : (
+              <div className="w-full max-w-md h-[100dvh] sm:h-[100vh] sm:max-h-[850px] sm:rounded-[40px] sm:border-[8px] border-gray-800 dark:border-gray-700 bg-[#F2F2F7] dark:bg-black overflow-hidden relative flex flex-col shadow-2xl transition-colors duration-300">
+                
+                {!user && authMode === 'welcome' && <WelcomeScreen onNavigate={setAuthMode} />}
+                {!user && authMode === 'signup' && <SignUpScreen onNavigate={setAuthMode} auth={auth} />}
+                {!user && authMode === 'login' && <LoginScreen onNavigate={setAuthMode} auth={auth} />}
+                
+                {user && (
+                  <>
+                    <div className={`${getHeaderStyle()} pt-14 pb-6 px-6 ${currentTab === 'settings' ? 'text-gray-900 dark:text-white' : 'text-white'} rounded-b-[2rem] shadow-sm z-10 flex-shrink-0 transition-colors duration-500 relative overflow-hidden`}>
+                      <div className="flex justify-between items-center mb-6 relative z-10">
+                        <div 
+                          onClick={currentTab === 'transactions' || currentTab === 'planning' ? cycleWallet : undefined}
+                          className={`flex items-center gap-2 py-1.5 px-3 rounded-full transition-all ${(currentTab === 'transactions' || currentTab === 'planning') ? (currentTab === 'settings' ? 'bg-black/5 dark:bg-white/10 hover:bg-black/10' : 'bg-white/20 hover:bg-white/30') + ' cursor-pointer backdrop-blur-md' : 'bg-transparent'}`}
+                        >
+                          {(currentTab === 'transactions' || currentTab === 'planning') ? <RefreshCw className="w-4 h-4" /> : <Wallet className="w-4 h-4" />}
+                          <span className="font-semibold text-sm">
+                            {currentTab === 'settings' ? 'Settings' : activeWallet.name}
+                          </span>
+                        </div>
+                        {currentTab !== 'settings' && (
+                          <button onClick={() => setIsNotifOpen(true)} className="p-2 hover:bg-white/20 rounded-full transition-colors relative">
+                            <Bell className="w-5 h-5" />
+                            {upcomingBills.length > 0 && <span className="absolute top-1 right-2 w-2.5 h-2.5 bg-rose-500 rounded-full border-2 border-transparent"></span>}
+                          </button>
+                        )}
+                      </div>
+
+                      {currentTab !== 'settings' && (
+                        <div className="text-center mb-4 relative z-10 animate-in fade-in slide-in-from-bottom-2">
+                          <p className="opacity-80 text-sm font-medium mb-1">
+                            {currentTab === 'planning' ? 'Total Planning Pool' : 'Total Balance'}
+                          </p>
+                          <h1 className="text-4xl font-bold tracking-tight">
+                            {formatCurrency(balance, activeWallet.currency)}
+                          </h1>
+                        </div>
+                      )}
+
+                      {currentTab === 'transactions' && (
+                        <div className="flex justify-between items-center bg-black/10 dark:bg-white/5 rounded-2xl p-4 mt-6 backdrop-blur-md border border-white/10 dark:border-white/5">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center shadow-inner">
+                              <TrendingDown className="w-5 h-5 text-white" />
+                            </div>
+                            <div>
+                              <p className="text-white/80 text-xs font-medium">Income</p>
+                              <p className="font-semibold">{formatCurrency(totalIncome, activeWallet.currency)}</p>
+                            </div>
+                          </div>
+                          <div className="w-px h-8 bg-white/20"></div>
+                          <div className="flex items-center gap-3">
+                            <div>
+                              <p className="text-white/80 text-xs font-medium text-right">Expenses</p>
+                              <p className="font-semibold">{formatCurrency(totalExpense, activeWallet.currency)}</p>
+                            </div>
+                            <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center shadow-inner">
+                              <TrendingUp className="w-5 h-5 text-white" />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {isMissingConfig && (
+                      <div className="bg-orange-500 text-white text-xs font-bold p-2 text-center shadow-sm">
+                        No Firebase Config! Running in offline temporary mode.
+                      </div>
+                    )}
+
+                    {currentTab !== 'settings' && (
+                      <div className="flex items-center justify-between px-6 py-4 bg-[#F2F2F7] dark:bg-black border-b border-gray-200/60 dark:border-[#2C2C2E] flex-shrink-0 z-0">
+                        <button onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1))} className="p-2 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-full transition-colors">
+                          <ChevronLeft className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+                        </button>
+                        <span className="font-semibold text-gray-700 dark:text-gray-300">
+                          {new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(currentMonth)}
+                        </span>
+                        <button onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1))} className="p-2 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-full transition-colors">
+                          <ChevronRight className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="flex-1 overflow-y-auto pb-28 relative z-0">
+                      {currentTab === 'transactions' && (
+                        <RecordsView transactions={monthTransactions} currency={activeWallet.currency} formatCurrency={formatCurrency} wallets={wallets} activeWalletId={activeWalletId} />
+                      )}
+                      {currentTab === 'analytics' && (
+                        <AnalyticsView transactions={monthTransactions} totalExpense={totalExpense} currency={activeWallet.currency} formatCurrency={formatCurrency} />
+                      )}
+                      {currentTab === 'planning' && (
+                        <PlanningView transactions={monthTransactions} budgets={budgets.filter(b=>activeWalletId==='all'||b.walletId===activeWalletId)} goals={goals} currency={activeWallet.currency} formatCurrency={formatCurrency} onAddBudget={() => setIsAddBudgetOpen(true)} onAddGoal={() => setIsAddGoalOpen(true)} onFundGoal={(g) => setIsFundGoalOpen(g)} />
+                      )}
+                      {currentTab === 'settings' && (
+                        <SettingsView user={user} wallets={wallets} prefs={preferences} setPref={updatePreference} onAddWallet={() => setIsAddWalletOpen(true)} onLogout={() => auth ? signOut(auth) : setAuthMode('welcome')} />
+                      )}
+                    </div>
+
+                    <div className="absolute bottom-0 w-full bg-white/70 dark:bg-[#1C1C1E]/80 saturate-150 backdrop-blur-xl border-t border-gray-200/50 dark:border-[#2C2C2E]/50 pb-safe sm:pb-0 px-6 h-24 flex items-center justify-between z-20">
+                      <NavItem icon={List} label="Records" active={currentTab === 'transactions'} onClick={() => setCurrentTab('transactions')} />
+                      <NavItem icon={PieChart} label="Analytics" active={currentTab === 'analytics'} onClick={() => setCurrentTab('analytics')} />
+                      <div className="w-16"></div>
+                      <NavItem icon={Target} label="Planning" active={currentTab === 'planning'} onClick={() => setCurrentTab('planning')} />
+                      <NavItem icon={Settings} label="Settings" active={currentTab === 'settings'} onClick={() => setCurrentTab('settings')} />
+                      
+                      <div className="absolute -top-7 left-1/2 -translate-x-1/2 z-30 flex items-center justify-center">
+                        <div className="w-[72px] h-[72px] rounded-full bg-emerald-400/25 dark:bg-emerald-500/20 p-2 flex items-center justify-center shadow-[0_8px_32px_rgba(16,185,129,0.25)] backdrop-blur-md">
+                          <button onClick={() => setIsAddOpen(true)} className="w-full h-full bg-gradient-to-br from-emerald-400 to-emerald-500 dark:from-emerald-500 dark:to-emerald-600 rounded-full flex items-center justify-center text-white shadow-sm transition-transform active:scale-90">
+                            <Plus className="w-8 h-8" strokeWidth={2.5} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <AddTransactionModal isOpen={isAddOpen} onClose={() => setIsAddOpen(false)} onSave={(data) => saveToFirebase('transactions', data)} wallets={wallets} initialWalletId={activeWalletId === 'all' ? (wallets[0]?.id || '') : activeWalletId} />
+                    <AddWalletModal isOpen={isAddWalletOpen} onClose={() => setIsAddWalletOpen(false)} onSave={(data) => saveToFirebase('wallets', data)} />
+                    <AddBudgetModal isOpen={isAddBudgetOpen} onClose={() => setIsAddBudgetOpen(false)} onSave={(data) => saveToFirebase('budgets', data)} wallets={wallets} activeWalletId={activeWalletId} />
+                    <AddGoalModal isOpen={isAddGoalOpen} onClose={() => setIsAddGoalOpen(false)} onSave={(data) => saveToFirebase('goals', data)} />
+                    <FundGoalModal goal={isFundGoalOpen} onClose={() => setIsFundGoalOpen(null)} onSave={(id, newAmount) => saveToFirebase('goals', { currentAmount: newAmount }, id)} formatCurrency={formatCurrency} currency={activeWallet.currency} />
+                    <NotificationsModal isOpen={isNotifOpen} onClose={() => setIsNotifOpen(false)} bills={upcomingBills} allBills={bills} onAddBill={() => { setIsNotifOpen(false); setIsAddBillOpen(true); }} formatCurrency={formatCurrency} currency={activeWallet.currency} />
+                    <AddBillModal isOpen={isAddBillOpen} onClose={() => setIsAddBillOpen(false)} onSave={(data) => saveToFirebase('bills', data)} />
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // --- TAB VIEWS ---
+    function RecordsView({ transactions, currency, formatCurrency, wallets, activeWalletId }) {
+      const groupedTransactions = useMemo(() => {
+        const groups = {};
+        transactions.forEach(t => {
+          const dateKey = new Date(t.date).toDateString();
+          if (!groups[dateKey]) groups[dateKey] = { date: t.date, items: [], total: 0 };
+          groups[dateKey].items.push(t);
+          let amount = t.amount;
+          if (activeWalletId === 'all' && t.type !== 'transfer') {
+            const w = wallets.find(w => w.id === t.walletId);
+            amount = t.amount * (EX_RATES[w?.currency] || 1);
+            groups[dateKey].total += t.type === 'expense' ? -amount : amount;
+          } else if (activeWalletId !== 'all') {
+            if (t.type === 'transfer') {
+                if (t.fromWalletId === activeWalletId) groups[dateKey].total -= t.amount;
+                if (t.toWalletId === activeWalletId) groups[dateKey].total += (t.amountConverted || t.amount);
+            } else groups[dateKey].total += t.type === 'expense' ? -amount : amount;
+          }
+        });
+        return Object.values(groups).sort((a, b) => new Date(b.date) - new Date(a.date));
+      }, [transactions, activeWalletId, wallets]);
+
+      if (groupedTransactions.length === 0) {
+        return (
+          <div className="h-full flex flex-col items-center justify-center text-gray-400 space-y-4 pt-20">
+            <div className="w-20 h-20 bg-gray-200/50 dark:bg-gray-800/50 rounded-full flex items-center justify-center shadow-inner">
+              <List className="w-8 h-8 text-gray-400 dark:text-gray-500" />
+            </div>
+            <p className="font-medium text-gray-500">No transactions this month.</p>
+          </div>
+        );
+      }
+
+      return (
+        <div className="px-4 py-4 space-y-6">
+          {groupedTransactions.map((group, index) => (
+            <div key={index} className="animate-in slide-in-from-bottom-4 duration-500" style={{ animationDelay: `${index * 50}ms`, animationFillMode: 'both' }}>
+              <div className="flex justify-between items-center px-2 mb-2">
+                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">{formatDateHeader(group.date)}</span>
+                <span className="text-xs font-bold text-gray-400">
+                  {group.total > 0 ? '+' : ''}{formatCurrency(group.total, currency)}
+                </span>
+              </div>
+              <div className="bg-white dark:bg-[#1C1C1E] rounded-3xl shadow-[0_2px_10px_rgba(0,0,0,0.03)] border border-gray-100 dark:border-[#2C2C2E] overflow-hidden transition-colors duration-300">
+                {group.items.map((tx, i) => {
+                  const isTransfer = tx.type === 'transfer';
+                  const category = isTransfer ? null : CATEGORIES[tx.categoryId];
+                  let displayAmount = tx.amount, isPositive = tx.type === 'income';
+                  if (isTransfer) {
+                    if (activeWalletId === 'all') { displayAmount = tx.amount; isPositive = false; } 
+                    else { isPositive = tx.toWalletId === activeWalletId; displayAmount = isPositive ? (tx.amountConverted || tx.amount) : tx.amount; }
+                  }
+                  return (
+                    <div key={tx.id} className={`flex items-center justify-between p-4 hover:bg-gray-50 dark:hover:bg-[#2C2C2E] cursor-pointer transition-colors group ${i !== group.items.length - 1 ? 'border-b border-gray-50 dark:border-[#2C2C2E]' : ''}`}>
+                      <div className="flex items-center gap-4">
+                        {isTransfer ? (
+                          <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 group-hover:scale-105 transition-transform">
+                            <ArrowRightLeft className="w-6 h-6" />
+                          </div>
+                        ) : (
+                          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-sm ${category?.bg} group-hover:scale-105 transition-transform`}>
+                            {category && <category.icon className="w-6 h-6" />}
+                          </div>
+                        )}
+                        <div>
+                          <p className="font-semibold text-gray-900 dark:text-gray-100 text-[15px]">{isTransfer ? 'Transfer' : category?.name}</p>
+                          {activeWalletId === 'all' && <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 font-medium">{wallets.find(w => w.id === tx.walletId)?.name || 'Transfer'}</p>}
+                          {tx.note && <p className="text-xs text-gray-400 mt-0.5">{tx.note}</p>}
+                        </div>
+                      </div>
+                      <span className={`font-semibold text-[15px] ${isTransfer ? (isPositive ? 'text-emerald-500' : 'text-gray-900 dark:text-white') : (tx.type === 'income' ? 'text-emerald-500' : 'text-gray-900 dark:text-white')}`}>
+                        {isPositive ? '+' : '-'}{formatCurrency(displayAmount, activeWalletId === 'all' && !isTransfer ? wallets.find(w=>w.id===tx.walletId)?.currency : currency)}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    function AnalyticsView({ transactions, totalExpense, currency, formatCurrency }) {
+      const analyticsData = useMemo(() => {
+        const expenses = transactions.filter(t => t.type === 'expense');
+        const categoryTotals = {};
+        expenses.forEach(t => { if (!categoryTotals[t.categoryId]) categoryTotals[t.categoryId] = 0; categoryTotals[t.categoryId] += t.amount; });
+        return Object.keys(categoryTotals).map(catId => {
+          const amount = categoryTotals[catId];
+          return { ...CATEGORIES[catId], amount, percentage: totalExpense > 0 ? (amount / totalExpense) * 100 : 0 };
+        }).sort((a, b) => b.amount - a.amount);
+      }, [transactions, totalExpense]);
+
+      if (analyticsData.length === 0) {
+        return (
+          <div className="h-full flex flex-col items-center justify-center text-gray-400 space-y-4 pt-20">
+            <PieChart className="w-12 h-12 text-gray-300 dark:text-gray-600" />
+            <p>Not enough data for analytics.</p>
+          </div>
+        );
+      }
+
+      return (
+        <div className="px-4 py-6 space-y-8 animate-in fade-in duration-500">
+          <div className="bg-white dark:bg-[#1C1C1E] rounded-3xl p-6 shadow-[0_2px_15px_rgba(0,0,0,0.03)] border border-gray-100 dark:border-[#2C2C2E] flex flex-col items-center justify-center h-64 relative transition-colors duration-300">
+            <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
+               <span className="text-gray-400 text-xs font-semibold uppercase tracking-wider mb-1">Total Expenses</span>
+               <span className="text-3xl font-bold text-gray-900 dark:text-white">{formatCurrency(totalExpense, currency)}</span>
+            </div>
+            <svg width="200" height="200" viewBox="0 0 200 200" className="transform -rotate-90">
+              <circle cx="100" cy="100" r="80" fill="transparent" stroke="currentColor" className="text-gray-100 dark:text-gray-800" strokeWidth="16" />
+              {(() => {
+                let currentOffset = 0; const circumference = 2 * Math.PI * 80;
+                return analyticsData.map((data, i) => {
+                  const segmentLength = (data.percentage / 100) * circumference;
+                  const gap = analyticsData.length > 1 && data.percentage < 100 ? 6 : 0;
+                  const activeLength = Math.max(0, segmentLength - gap);
+                  const offsetToApply = currentOffset; currentOffset += segmentLength;
+                  return (
+                    <circle key={i} cx="100" cy="100" r="80" fill="transparent" stroke={COLOR_MAP[data.bg] || '#10b981'} strokeWidth="16" strokeDasharray={`${activeLength} ${circumference}`} strokeDashoffset={0} strokeLinecap="round" transform={`rotate(${(offsetToApply / circumference) * 360} 100 100)`} className="transition-all duration-1000 ease-out animate-in fade-in" style={{ animationDelay: `${i * 0.1}s` }} />
+                  );
+                });
+              })()}
+            </svg>
+          </div>
+          <div className="space-y-3">
+            <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider px-2">Top Spending</h3>
+            <div className="bg-white dark:bg-[#1C1C1E] rounded-3xl shadow-[0_2px_10px_rgba(0,0,0,0.03)] border border-gray-100 dark:border-[#2C2C2E] overflow-hidden divide-y divide-gray-50 dark:divide-[#2C2C2E] transition-colors duration-300">
+              {analyticsData.map((data, i) => {
+                const Icon = data.icon;
+                return (
+                  <div key={i} className="flex items-center gap-4 p-4">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white flex-shrink-0 ${data.bg}`}>
+                      <Icon className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-end mb-1.5">
+                        <span className="font-semibold text-gray-900 dark:text-gray-100 text-[15px] truncate">{data.name}</span>
+                        <span className="font-semibold text-gray-900 dark:text-gray-100">{formatCurrency(data.amount, currency)}</span>
+                      </div>
+                      <div className="h-1.5 w-full bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full ${data.bg}`} style={{ width: `${data.percentage}%` }}></div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function PlanningView({ transactions, budgets, goals, currency, formatCurrency, onAddBudget, onAddGoal, onFundGoal }) {
+      const [mode, setMode] = useState('budgets');
+
+      const budgetStats = useMemo(() => budgets.map(budget => {
+        const spent = transactions.filter(t => t.categoryId === budget.categoryId && t.type === 'expense' && (t.walletId === budget.walletId || budget.walletId === 'all')).reduce((sum, t) => sum + t.amount, 0);
+        const percentage = Math.min((spent / budget.limit) * 100, 100);
+        return { ...budget, spent, percentage, category: CATEGORIES[budget.categoryId], statusColor: percentage >= 100 ? 'bg-rose-500' : percentage > 80 ? 'bg-orange-500' : 'bg-emerald-500' };
+      }), [transactions, budgets]);
+
+      return (
+        <div className="px-4 py-6 space-y-6 animate-in fade-in duration-300">
+          <div className="flex bg-gray-200/50 dark:bg-[#1C1C1E] p-1 rounded-xl shadow-inner">
+            <button onClick={() => setMode('budgets')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${mode === 'budgets' ? 'bg-white dark:bg-[#2C2C2E] text-gray-900 dark:text-white shadow-sm' : 'text-gray-500'}`}>Budgets</button>
+            <button onClick={() => setMode('goals')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${mode === 'goals' ? 'bg-white dark:bg-[#2C2C2E] text-gray-900 dark:text-white shadow-sm' : 'text-gray-500'}`}>Savings Jars</button>
+          </div>
+
+          {mode === 'budgets' && (
+            <div className="space-y-4 animate-in slide-in-from-right-4 duration-300">
+              <div className="flex justify-between items-center px-2 mb-2">
+                <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider">Monthly Budgets</h3>
+                <button onClick={onAddBudget} className="text-sm font-bold text-emerald-600 hover:text-emerald-700 flex items-center gap-1"><Plus className="w-4 h-4" /> Add</button>
+              </div>
+              {budgetStats.length === 0 ? (
+                <div className="text-center py-10 text-gray-400"><Target className="w-12 h-12 mx-auto mb-3 opacity-50" /><p>No budgets set.</p></div>
+              ) : budgetStats.map((b, i) => (
+                <div key={i} className="bg-white dark:bg-[#1C1C1E] p-5 rounded-3xl shadow-sm border border-gray-100 dark:border-[#2C2C2E] relative overflow-hidden transition-colors">
+                  {b.percentage >= 100 && <div className="absolute top-0 left-0 w-full h-1.5 bg-rose-500"></div>}
+                  <div className="flex justify-between items-start mb-5">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-sm ${b.category.bg}`}><b.category.icon className="w-6 h-6" /></div>
+                      <div><h3 className="font-bold text-gray-900 dark:text-white text-[15px]">{b.category.name}</h3><p className="text-xs text-gray-400 font-medium mt-0.5">Monthly Limit</p></div>
+                    </div>
+                    <div className="text-right">
+                      <p className={`font-bold text-lg ${b.percentage >= 100 ? 'text-rose-500' : 'text-gray-900 dark:text-white'}`}>{formatCurrency(b.spent, currency)}</p>
+                      <p className="text-xs text-gray-400 font-medium mt-0.5">of {formatCurrency(b.limit, currency)}</p>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-[11px] font-bold px-1 uppercase tracking-wider">
+                      <span className="text-gray-400">{b.percentage.toFixed(0)}% Spent</span>
+                      <span className={b.percentage >= 100 ? 'text-rose-500' : 'text-emerald-500'}>{b.percentage >= 100 ? 'Over Limit' : `${formatCurrency(b.limit - b.spent, currency)} Left`}</span>
+                    </div>
+                    <div className="h-3 w-full bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden shadow-inner">
+                      <div className={`h-full rounded-full ${b.statusColor} transition-all duration-700 ease-out`} style={{ width: `${b.percentage}%` }}></div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {mode === 'goals' && (
+            <div className="space-y-4 animate-in slide-in-from-left-4 duration-300">
+              <div className="flex justify-between items-center px-2 mb-2">
+                <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider">Savings Jars</h3>
+                <button onClick={onAddGoal} className="text-sm font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1"><Plus className="w-4 h-4" /> Create</button>
+              </div>
+              {goals.length === 0 ? (
+                <div className="text-center py-10 text-gray-400"><Trophy className="w-12 h-12 mx-auto mb-3 opacity-50" /><p>Start saving for something big!</p></div>
+              ) : goals.map((g, i) => {
+                const percentage = Math.min((g.currentAmount / g.targetAmount) * 100, 100);
+                return (
+                  <div key={i} className="bg-white dark:bg-[#1C1C1E] p-5 rounded-3xl shadow-sm border border-gray-100 dark:border-[#2C2C2E] transition-colors group">
+                    <div className="flex justify-between items-start mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="text-3xl bg-gray-50 dark:bg-gray-800 w-12 h-12 rounded-2xl flex items-center justify-center">{g.icon}</div>
+                        <div><h3 className="font-bold text-gray-900 dark:text-white text-[15px]">{g.name}</h3></div>
+                      </div>
+                      <button onClick={() => onFundGoal(g)} className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 text-xs font-bold rounded-full hover:bg-indigo-100 transition-colors">Add Funds</button>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-[11px] font-bold px-1 uppercase tracking-wider">
+                        <span className="text-indigo-500">{formatCurrency(g.currentAmount, currency)}</span>
+                        <span className="text-gray-400">{formatCurrency(g.targetAmount, currency)}</span>
+                      </div>
+                      <div className="h-4 w-full bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden shadow-inner p-0.5">
+                        <div className={`h-full rounded-full bg-gradient-to-r ${g.color} transition-all duration-700 ease-out relative`} style={{ width: `${Math.max(percentage, 5)}%` }}>
+                          {percentage >= 100 && <div className="absolute inset-0 bg-white/20 animate-pulse"></div>}
+                        </div>
+                      </div>
+                      {percentage >= 100 && <p className="text-xs text-center text-emerald-500 font-bold pt-2 animate-bounce">Goal Reached! 🎉</p>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    function SettingsView({ user, wallets, prefs, setPref, onAddWallet, onLogout }) {
+      const [activeModal, setActiveModal] = useState(null); 
+
+      const SectionTitle = ({ children }) => <h3 className="text-[12px] font-bold text-gray-400 uppercase tracking-widest px-4 mb-2 mt-8 first:mt-0">{children}</h3>;
+      const Row = ({ icon: Icon, color, label, value, onClick }) => (
+        <div onClick={onClick} className="flex items-center justify-between p-4 hover:bg-gray-50 dark:hover:bg-[#2C2C2E] cursor-pointer group transition-colors">
+          <div className="flex items-center gap-4">
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-white ${color} shadow-sm group-hover:scale-105 transition-transform`}><Icon className="w-4 h-4" /></div>
+            <p className="font-bold text-gray-900 dark:text-white text-[15px]">{label}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {value && <span className="text-[13px] font-bold text-gray-400">{value}</span>}
+            <ChevronRightIcon className="w-5 h-5 text-gray-300" />
+          </div>
+        </div>
+      );
+
+      return (
+        <div className="px-4 py-6 animate-in fade-in duration-300 pb-32">
+          <div className="bg-white dark:bg-[#1C1C1E] rounded-[2rem] p-4 shadow-sm border border-gray-100 dark:border-[#2C2C2E] flex items-center gap-4 mb-8">
+            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center shadow-inner"><User className="w-8 h-8 text-white" /></div>
+            <div className="flex-1 min-w-0">
+              <h2 className="text-xl font-black text-gray-900 dark:text-white truncate">{user?.displayName || 'Finance User'}</h2>
+              <p className="text-gray-500 dark:text-gray-400 font-medium text-[13px] truncate">{user?.email || (user?.isAnonymous ? 'Anonymous Session' : 'Free Plan')}</p>
+            </div>
+          </div>
+
+          <SectionTitle>My Accounts</SectionTitle>
+          <div className="bg-white dark:bg-[#1C1C1E] rounded-3xl shadow-sm border border-gray-100 dark:border-[#2C2C2E] overflow-hidden divide-y divide-gray-50 dark:divide-[#2C2C2E]">
+            {wallets.map((w, i) => {
+              const WIcon = ICON_MAP[w.iconString] || Wallet;
+              return (
+                <div key={i} className="flex items-center justify-between p-4 hover:bg-gray-50 dark:hover:bg-[#2C2C2E] cursor-pointer group transition-colors">
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-[14px] bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-600 dark:text-gray-300 group-hover:scale-105 transition-transform"><WIcon className="w-5 h-5" /></div>
+                    <div><p className="font-bold text-gray-900 dark:text-white text-[15px]">{w.name}</p><p className="text-[13px] text-gray-400 font-medium">{w.currency}</p></div>
+                  </div>
+                  <ChevronRightIcon className="w-5 h-5 text-gray-300" />
+                </div>
+              )
+            })}
+            <div onClick={onAddWallet} className="flex items-center gap-4 p-4 hover:bg-gray-50 dark:hover:bg-[#2C2C2E] cursor-pointer text-emerald-600 dark:text-emerald-400 transition-colors group">
+              <div className="w-10 h-10 rounded-[14px] bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-100 dark:border-emerald-800/50 flex items-center justify-center group-hover:scale-105 transition-transform"><Plus className="w-5 h-5" /></div>
+              <p className="font-bold text-[15px]">Add New Account</p>
+            </div>
+          </div>
+
+          <SectionTitle>Preferences</SectionTitle>
+          <div className="bg-white dark:bg-[#1C1C1E] rounded-3xl shadow-sm border border-gray-100 dark:border-[#2C2C2E] overflow-hidden divide-y divide-gray-50 dark:divide-[#2C2C2E]">
+            <Row icon={Globe} color="bg-orange-500" label="Currencies" value={prefs.baseCurrency} onClick={() => setActiveModal('Currencies')} />
+            
+            <div className="flex items-center justify-between p-4 hover:bg-gray-50 dark:hover:bg-[#2C2C2E] transition-colors">
+               <div className="flex items-center gap-4">
+                 <div className="w-8 h-8 rounded-xl flex items-center justify-center text-white bg-indigo-500 shadow-sm"><Home className="w-4 h-4" /></div>
+                 <p className="font-bold text-gray-900 dark:text-white text-[15px]">Dark Mode</p>
+               </div>
+               <button onClick={() => setPref('isDarkMode', !prefs.isDarkMode)} className={`w-[52px] h-7 rounded-full transition-colors relative ${prefs.isDarkMode ? 'bg-indigo-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
+                 <div className={`absolute top-1 left-1 bg-white w-5 h-5 rounded-full transition-transform duration-300 shadow-sm ${prefs.isDarkMode ? 'translate-x-6' : ''}`} />
+               </button>
+            </div>
+            
+            <Row icon={Shield} color="bg-emerald-500" label="Security" onClick={() => setActiveModal('Security')} />
+            <Row icon={Bell} color="bg-rose-500" label="Notifications" onClick={() => setActiveModal('Notifications')} />
+          </div>
+
+          <SectionTitle>More</SectionTitle>
+          <div className="bg-white dark:bg-[#1C1C1E] rounded-3xl shadow-sm border border-gray-100 dark:border-[#2C2C2E] overflow-hidden divide-y divide-gray-50 dark:divide-[#2C2C2E]">
+            <Row icon={HelpCircle} color="bg-blue-500" label="Help Center" onClick={() => setActiveModal('Help Center')} />
+            <Row icon={Info} color="bg-gray-800" label="About Cashly" onClick={() => setActiveModal('About Cashly')} />
+          </div>
+
+          <div className="mt-8">
+            <button onClick={onLogout} className="w-full bg-white dark:bg-[#1C1C1E] rounded-3xl shadow-sm border border-gray-100 dark:border-[#2C2C2E] p-4 flex items-center justify-center gap-2 text-rose-500 font-bold hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors active:scale-[0.98]">
+              <LogOut className="w-5 h-5" /> Log Out
+            </button>
+          </div>
+
+          {activeModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setActiveModal(null)}>
+              <div className="bg-white dark:bg-[#1C1C1E] rounded-[2rem] w-full max-w-sm shadow-2xl overflow-hidden flex flex-col transition-colors" onClick={e => e.stopPropagation()}>
+                <div className="px-6 py-5 border-b border-gray-100 dark:border-[#2C2C2E] flex justify-between items-center bg-gray-50/50 dark:bg-black/20">
+                  <h3 className="font-bold text-lg text-gray-900 dark:text-white">{activeModal}</h3>
+                  <button onClick={() => setActiveModal(null)} className="p-2 bg-gray-200/50 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full text-gray-600 dark:text-gray-300 transition-colors"><Plus className="w-5 h-5 rotate-45" /></button>
+                </div>
+                <div className="p-6 max-h-[60vh] overflow-y-auto space-y-4 text-gray-900 dark:text-white">
+                  {activeModal === 'Currencies' && (
+                    <div className="space-y-2">
+                      {['USD', 'EUR', 'GBP', 'JPY', 'INR'].map(c => (
+                        <button key={c} onClick={() => { setPref('baseCurrency', c); setActiveModal(null); }} className={`w-full flex items-center justify-between p-4 rounded-2xl border transition-colors ${prefs.baseCurrency === c ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400' : 'border-gray-100 dark:border-[#2C2C2E] hover:bg-gray-50 dark:hover:bg-[#2C2C2E]'}`}>
+                          <span className="font-semibold">{c}</span>
+                          {prefs.baseCurrency === c && <div className="w-3 h-3 bg-emerald-500 rounded-full shadow-[0_0_8px_rgba(16,185,129,0.5)]" />}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {activeModal === 'Security' && (
+                    <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-[#2C2C2E] rounded-2xl border border-gray-100 dark:border-gray-700">
+                      <div><p className="font-bold text-[15px]">Use Face ID</p><p className="text-xs text-gray-500 font-medium mt-0.5">Quick biometric login</p></div>
+                      <button onClick={() => setPref('faceId', !prefs.faceId)} className={`w-[52px] h-7 rounded-full transition-colors relative ${prefs.faceId ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
+                        <div className={`absolute top-1 left-1 bg-white w-5 h-5 rounded-full transition-transform duration-300 shadow-sm ${prefs.faceId ? 'translate-x-6' : ''}`} />
+                      </button>
+                    </div>
+                  )}
+                  {activeModal === 'Notifications' && (
+                    <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-[#2C2C2E] rounded-2xl border border-gray-100 dark:border-gray-700">
+                      <div><p className="font-bold text-[15px]">Budget Alerts</p><p className="text-xs text-gray-500 font-medium mt-0.5">When nearing spending limits</p></div>
+                      <button onClick={() => setPref('budgetAlerts', !prefs.budgetAlerts)} className={`w-[52px] h-7 rounded-full transition-colors relative ${prefs.budgetAlerts ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
+                        <div className={`absolute top-1 left-1 bg-white w-5 h-5 rounded-full transition-transform duration-300 shadow-sm ${prefs.budgetAlerts ? 'translate-x-6' : ''}`} />
+                      </button>
+                    </div>
+                  )}
+                  {activeModal === 'Help Center' && (
+                    <div className="space-y-4 text-center py-4"><HelpCircle className="w-12 h-12 text-blue-500 mx-auto opacity-50" /><p className="font-bold text-gray-900 dark:text-white">How can we help?</p><p className="text-sm text-gray-500">Reach out at <span className="text-blue-500">support@cashly.app</span></p></div>
+                  )}
+                  {activeModal === 'About Cashly' && (
+                    <div className="space-y-4 text-center py-4"><div className="w-16 h-16 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-2xl mx-auto flex items-center justify-center shadow-lg"><Wallet className="w-8 h-8 text-white" /></div><p className="font-bold text-lg">Cashly</p><p className="text-sm text-gray-500">Version 2.0.0<br/>Your wealth, simplified.</p></div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // --- MODALS & UTILITIES ---
+
+    function NavItem({ icon: Icon, label, active, onClick }) {
+      return (
+        <button onClick={onClick} className={`flex flex-col items-center justify-center gap-1 min-w-[4rem] transition-colors relative z-10 ${active ? 'text-emerald-500' : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'}`}>
+          <Icon className={`w-6 h-6 transition-transform duration-300 ${active ? '-translate-y-1 scale-110' : ''}`} />
+          <span className={`text-[10px] font-bold tracking-wide transition-opacity duration-300 ${active ? 'opacity-100' : 'opacity-0'}`}>{label}</span>
+          {active && <span className="absolute -bottom-1.5 w-1 h-1 bg-emerald-500 rounded-full"></span>}
+        </button>
+      );
+    }
+
+    function AddTransactionModal({ isOpen, onClose, onSave, wallets, initialWalletId }) {
+      const [type, setType] = useState('expense');
+      const [amount, setAmount] = useState('');
+      const [selectedCategory, setSelectedCategory] = useState(null);
+      const [note, setNote] = useState('');
+      const [selectedWalletId, setSelectedWalletId] = useState(initialWalletId);
+      const [fromWalletId, setFromWalletId] = useState('');
+      const [toWalletId, setToWalletId] = useState('');
+
+      useEffect(() => { 
+        if(isOpen) {
+          setSelectedWalletId(initialWalletId);
+          setFromWalletId(wallets[0]?.id || '');
+          setToWalletId(wallets[1]?.id || wallets[0]?.id || '');
+        }
+      }, [isOpen, initialWalletId, wallets]);
+
+      if (!isOpen) return null;
+
+      return (
+        <div className="absolute inset-0 z-50 flex flex-col justify-end pointer-events-none">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-auto transition-opacity duration-300" onClick={onClose} />
+          <div className="bg-[#F2F2F7] dark:bg-black w-full h-[90%] rounded-t-[2.5rem] shadow-[0_-10px_40px_rgba(0,0,0,0.2)] pointer-events-auto flex flex-col relative animate-in slide-in-from-bottom-full duration-500 ease-out transition-colors">
+            <div className="w-full flex justify-center pt-4 pb-2 absolute top-0 z-20"><div className="w-12 h-1.5 bg-gray-300 dark:bg-gray-700 rounded-full" /></div>
+            <div className="px-6 pt-10 pb-4 bg-white dark:bg-[#1C1C1E] rounded-t-[2.5rem] shadow-sm z-10">
+              <div className="flex bg-gray-100 dark:bg-[#2C2C2E] rounded-xl p-1 shadow-inner relative">
+                <div className={`absolute top-1 bottom-1 w-[31%] bg-white dark:bg-[#1C1C1E] rounded-lg shadow-sm transition-transform duration-300 ease-out ${type === 'expense' ? 'translate-x-[2%]' : type === 'income' ? 'translate-x-[108%]' : 'translate-x-[214%]'}`}></div>
+                <button onClick={() => setType('expense')} className={`flex-1 py-2 text-[13px] font-bold z-10 transition-colors ${type === 'expense' ? 'text-gray-900 dark:text-white' : 'text-gray-500'}`}>Expense</button>
+                <button onClick={() => setType('income')} className={`flex-1 py-2 text-[13px] font-bold z-10 transition-colors ${type === 'income' ? 'text-gray-900 dark:text-white' : 'text-gray-500'}`}>Income</button>
+                <button onClick={() => setType('transfer')} className={`flex-1 py-2 text-[13px] font-bold z-10 transition-colors ${type === 'transfer' ? 'text-gray-900 dark:text-white' : 'text-gray-500'}`}>Transfer</button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              <div className="p-8 text-center bg-white dark:bg-[#1C1C1E] border-b border-gray-100 dark:border-[#2C2C2E]">
+                <p className="text-gray-400 font-bold mb-2 uppercase tracking-widest text-[10px]">Amount</p>
+                <div className="flex items-center justify-center text-5xl font-black text-gray-900 dark:text-white">
+                  <span className="text-gray-300 dark:text-gray-600 mr-2 text-4xl">$</span>
+                  <input type="text" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ''))} placeholder="0.00" className="bg-transparent w-full max-w-[200px] outline-none text-center placeholder-gray-200 dark:placeholder-gray-700" autoFocus />
+                </div>
+              </div>
+              <div className="p-6 space-y-6">
+                {type !== 'transfer' ? (
+                  <div className="bg-white dark:bg-[#1C1C1E] p-3 rounded-2xl shadow-sm border border-gray-100 dark:border-[#2C2C2E]">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-3 block px-1">Wallet</label>
+                    <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                      {wallets.map(w => {
+                        const WIcon = ICON_MAP[w.iconString] || Wallet;
+                        return (
+                          <button key={w.id} onClick={() => setSelectedWalletId(w.id)} className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-xl border transition-all ${selectedWalletId === w.id ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : 'border-gray-100 dark:border-[#3C3C3E] bg-gray-50 dark:bg-[#2C2C2E] text-gray-600 dark:text-gray-300'}`}>
+                            <WIcon className="w-4 h-4" /><span className="text-sm font-semibold">{w.name}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-white dark:bg-[#1C1C1E] p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-[#2C2C2E] flex items-center justify-between gap-2">
+                    <div className="flex-1">
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2 block">From</label>
+                      <select value={fromWalletId} onChange={e => setFromWalletId(e.target.value)} className="w-full bg-gray-50 dark:bg-[#2C2C2E] border border-gray-100 dark:border-gray-700 rounded-xl px-3 py-2 text-sm font-semibold text-gray-800 dark:text-gray-200 outline-none focus:border-emerald-500">
+                        {wallets.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                      </select>
+                    </div>
+                    <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-[#2C2C2E] flex items-center justify-center text-gray-400 mt-5 shadow-inner"><ArrowRightLeft className="w-4 h-4" /></div>
+                    <div className="flex-1">
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2 block">To</label>
+                      <select value={toWalletId} onChange={e => setToWalletId(e.target.value)} className="w-full bg-gray-50 dark:bg-[#2C2C2E] border border-gray-100 dark:border-gray-700 rounded-xl px-3 py-2 text-sm font-semibold text-gray-800 dark:text-gray-200 outline-none focus:border-emerald-500">
+                        {wallets.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                )}
+                {type !== 'transfer' && (
+                  <div className="bg-white dark:bg-[#1C1C1E] p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-[#2C2C2E]">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-4 block">Category</label>
+                    <div className="grid grid-cols-4 gap-y-6 gap-x-2">
+                      {Object.values(CATEGORIES).filter(c => c.type === type).map((cat) => (
+                        <button key={cat.id} onClick={() => setSelectedCategory(cat.id)} className="flex flex-col items-center gap-2 group outline-none">
+                          <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-300 ${selectedCategory === cat.id ? cat.bg + ' text-white ring-4 ring-offset-1 dark:ring-offset-[#1C1C1E] ring-' + cat.bg.replace('bg-', '') + ' scale-110 shadow-lg' : 'bg-gray-50 dark:bg-[#2C2C2E] text-gray-500 dark:text-gray-400 border border-gray-100 dark:border-[#3C3C3E]'}`}>
+                            <cat.icon className="w-6 h-6" />
+                          </div>
+                          <span className={`text-[10px] font-bold text-center transition-colors ${selectedCategory === cat.id ? 'text-gray-900 dark:text-white' : 'text-gray-500'}`}>{cat.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div className="bg-white dark:bg-[#1C1C1E] p-2 rounded-2xl shadow-sm border border-gray-100 dark:border-[#2C2C2E] flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gray-50 dark:bg-[#2C2C2E] flex items-center justify-center text-gray-400"><FileText className="w-5 h-5" /></div>
+                  <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Write a note..." className="flex-1 text-[15px] font-medium text-gray-800 dark:text-gray-200 bg-transparent outline-none placeholder-gray-300 dark:placeholder-gray-600" />
+                </div>
+              </div>
+            </div>
+            <div className="p-6 bg-white/80 dark:bg-[#1C1C1E]/80 backdrop-blur-md border-t border-gray-100 dark:border-[#2C2C2E] pb-safe">
+              <button onClick={() => { onSave({ amount: parseFloat(amount), categoryId: selectedCategory, walletId: selectedWalletId, fromWalletId, toWalletId, note, date: new Date().toISOString(), type }); setAmount(''); setSelectedCategory(null); setNote(''); onClose(); }} disabled={!amount || (type !== 'transfer' && !selectedCategory) || (type === 'transfer' && fromWalletId === toWalletId)} className="w-full py-4 rounded-2xl font-bold text-[15px] text-white bg-gray-900 dark:bg-white dark:text-gray-900 hover:bg-gray-800 disabled:opacity-30 shadow-lg active:scale-[0.98] transition-transform">
+                Save {type === 'transfer' ? 'Transfer' : 'Transaction'}
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function NotificationsModal({ isOpen, onClose, bills, allBills, onAddBill, formatCurrency, currency }) {
+      if (!isOpen) return null;
+      return (
+        <div className="absolute inset-0 z-50 flex flex-col justify-end pointer-events-none">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-auto transition-opacity" onClick={onClose} />
+          <div className="bg-[#F2F2F7] dark:bg-black w-full rounded-t-[2.5rem] shadow-[0_-10px_40px_rgba(0,0,0,0.2)] pointer-events-auto flex flex-col relative animate-in slide-in-from-bottom-full p-6 pb-safe max-h-[85%] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6 pt-2">
+              <h2 className="text-xl font-black text-gray-900 dark:text-white">Upcoming Bills</h2>
+              <button onClick={onAddBill} className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 flex items-center justify-center hover:scale-105 transition-transform"><Plus className="w-5 h-5"/></button>
+            </div>
+            
+            {bills.length === 0 ? (
+              <div className="text-center py-10 text-gray-400 dark:text-gray-500">
+                <Calendar className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                <p className="font-bold">No bills due in the next 7 days.</p>
+              </div>
+            ) : (
+              <div className="space-y-3 mb-6">
+                <h3 className="text-[11px] font-bold text-rose-500 uppercase tracking-widest px-2">Due Soon</h3>
+                {bills.map(b => (
+                  <div key={b.id} className="bg-white dark:bg-[#1C1C1E] p-4 rounded-2xl flex items-center justify-between border border-gray-100 dark:border-[#2C2C2E] shadow-sm">
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-xl bg-rose-50 dark:bg-rose-500/10 text-rose-500 flex items-center justify-center"><AlertCircle className="w-5 h-5"/></div>
+                      <div><p className="font-bold text-gray-900 dark:text-white text-[15px]">{b.name}</p><p className="text-xs text-rose-500 font-bold">Due on the {b.dueDate}th</p></div>
+                    </div>
+                    <p className="font-black text-gray-900 dark:text-white">{formatCurrency(b.amount, currency)}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {allBills.length > 0 && (
+              <div className="space-y-3">
+                 <h3 className="text-[11px] font-bold text-gray-400 uppercase tracking-widest px-2">All Monthly Bills</h3>
+                 {allBills.map(b => (
+                    <div key={b.id} className="bg-white dark:bg-[#1C1C1E] p-4 rounded-2xl flex items-center justify-between border border-gray-100 dark:border-[#2C2C2E] shadow-sm">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-500 flex items-center justify-center"><Calendar className="w-4 h-4"/></div>
+                        <div><p className="font-bold text-gray-900 dark:text-white text-[14px]">{b.name}</p></div>
+                      </div>
+                      <div className="text-right"><p className="font-bold text-gray-900 dark:text-white">{formatCurrency(b.amount, currency)}</p><p className="text-[10px] text-gray-400 font-bold">Day {b.dueDate}</p></div>
+                    </div>
+                 ))}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    function AddBillModal({ isOpen, onClose, onSave }) {
+      const [name, setName] = useState(''); const [amount, setAmount] = useState(''); const [dueDate, setDueDate] = useState('1');
+      if (!isOpen) return null;
+      return (
+        <div className="absolute inset-0 z-50 flex flex-col justify-end pointer-events-none">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-auto transition-opacity" onClick={onClose} />
+          <div className="bg-[#F2F2F7] dark:bg-black w-full rounded-t-[2.5rem] shadow-[0_-10px_40px_rgba(0,0,0,0.2)] pointer-events-auto flex flex-col p-6 pb-safe relative animate-in slide-in-from-bottom-full">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-6 text-center pt-2">Add Monthly Bill</h2>
+            <div className="space-y-4">
+              <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Bill Name (e.g. Netflix)" className="w-full bg-white dark:bg-[#1C1C1E] text-gray-900 dark:text-white rounded-xl px-4 py-4 text-[15px] font-bold outline-none border border-gray-100 dark:border-[#2C2C2E]" autoFocus />
+              <input type="text" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value.replace(/[^0-9.]/g, ''))} placeholder="Amount" className="w-full bg-white dark:bg-[#1C1C1E] text-gray-900 dark:text-white rounded-xl px-4 py-4 text-[15px] font-bold outline-none border border-gray-100 dark:border-[#2C2C2E]" />
+              <div className="bg-white dark:bg-[#1C1C1E] p-4 rounded-xl border border-gray-100 dark:border-[#2C2C2E] flex items-center justify-between">
+                <span className="font-bold text-gray-900 dark:text-white text-[15px]">Due Date (Day of Month)</span>
+                <select value={dueDate} onChange={e => setDueDate(e.target.value)} className="bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white font-bold rounded-lg px-3 py-1 outline-none">
+                  {Array.from({length: 31}, (_, i) => i + 1).map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </div>
+            </div>
+            <button onClick={() => { onSave({ name, amount: parseFloat(amount), dueDate: parseInt(dueDate) }); setName(''); setAmount(''); onClose(); }} disabled={!name || !amount} className="w-full mt-6 py-4 rounded-2xl font-bold text-white bg-emerald-500 disabled:opacity-50">Save Bill</button>
+          </div>
+        </div>
+      );
+    }
+
+    function AddGoalModal({ isOpen, onClose, onSave }) {
+      const [name, setName] = useState(''); const [target, setTarget] = useState(''); const [icon, setIcon] = useState('🏖️'); const [color, setColor] = useState('from-blue-400 to-blue-600');
+      if (!isOpen) return null;
+      const emojis = ['🏖️', '💻', '🚗', '🎓', '🏠', '🎮'];
+      const colors = ['from-blue-400 to-blue-600', 'from-emerald-400 to-emerald-600', 'from-purple-400 to-purple-600', 'from-rose-400 to-rose-600'];
+      return (
+        <div className="absolute inset-0 z-50 flex flex-col justify-end pointer-events-none">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-auto transition-opacity" onClick={onClose} />
+          <div className="bg-[#F2F2F7] dark:bg-black w-full rounded-t-[2.5rem] shadow-2xl pointer-events-auto flex flex-col p-6 pb-safe animate-in slide-in-from-bottom-full">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-6 text-center pt-2">New Savings Jar</h2>
+            <div className="space-y-4">
+              <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="What are you saving for?" className="w-full bg-white dark:bg-[#1C1C1E] text-gray-900 dark:text-white rounded-xl px-4 py-4 font-bold border border-gray-100 dark:border-[#2C2C2E] outline-none" />
+              <input type="text" inputMode="decimal" value={target} onChange={e => setTarget(e.target.value.replace(/[^0-9.]/g, ''))} placeholder="Target Amount" className="w-full bg-white dark:bg-[#1C1C1E] text-gray-900 dark:text-white rounded-xl px-4 py-4 font-bold border border-gray-100 dark:border-[#2C2C2E] outline-none" />
+              <div className="flex gap-2 justify-center py-2">
+                {emojis.map(e => <button key={e} onClick={() => setIcon(e)} className={`text-2xl p-2 rounded-xl border-2 ${icon === e ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30' : 'border-transparent hover:bg-gray-100 dark:hover:bg-gray-800'}`}>{e}</button>)}
+              </div>
+              <div className="flex gap-3 justify-center py-2">
+                {colors.map(c => <button key={c} onClick={() => setColor(c)} className={`w-8 h-8 rounded-full bg-gradient-to-br ${c} ${color === c ? 'ring-2 ring-offset-2 ring-indigo-500 dark:ring-offset-black' : ''}`} />)}
+              </div>
+            </div>
+            <button onClick={() => { onSave({ name, targetAmount: parseFloat(target), currentAmount: 0, icon, color }); setName(''); setTarget(''); onClose(); }} disabled={!name || !target} className="w-full mt-6 py-4 rounded-2xl font-bold text-white bg-indigo-500 disabled:opacity-50">Create Jar</button>
+          </div>
+        </div>
+      );
+    }
+
+    function FundGoalModal({ goal, onClose, onSave, formatCurrency, currency }) {
+      const [amount, setAmount] = useState('');
+      if (!goal) return null;
+      return (
+        <div className="absolute inset-0 z-50 flex flex-col justify-end pointer-events-none">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-auto transition-opacity" onClick={onClose} />
+          <div className="bg-[#F2F2F7] dark:bg-black w-full rounded-t-[2.5rem] shadow-2xl pointer-events-auto flex flex-col p-6 pb-safe animate-in slide-in-from-bottom-full">
+            <div className="text-center mb-6"><div className="text-4xl mb-2">{goal.icon}</div><h2 className="text-xl font-bold text-gray-900 dark:text-white">Fund {goal.name}</h2><p className="text-sm text-gray-500">{formatCurrency(goal.targetAmount - goal.currentAmount, currency)} left to go!</p></div>
+            <div className="flex items-center justify-center text-4xl font-black text-gray-900 dark:text-white bg-white dark:bg-[#1C1C1E] p-6 rounded-3xl border border-gray-100 dark:border-[#2C2C2E] mb-6"><span className="text-gray-300 mr-2 text-2xl">$</span><input type="text" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ''))} placeholder="0.00" className="bg-transparent w-full max-w-[150px] outline-none text-center" autoFocus /></div>
+            <button onClick={() => { onSave(goal.id, goal.currentAmount + parseFloat(amount)); setAmount(''); onClose(); }} disabled={!amount} className="w-full py-4 rounded-2xl font-bold text-white bg-indigo-500 disabled:opacity-50">Add Funds</button>
+          </div>
+        </div>
+      );
+    }
+
+    function AddWalletModal({ isOpen, onClose, onSave }) {
+      const [name, setName] = useState(''); const [currency, setCurrency] = useState('USD');
+      if (!isOpen) return null;
+      return (
+        <div className="absolute inset-0 z-50 flex flex-col justify-end pointer-events-none">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-auto" onClick={onClose} />
+          <div className="bg-[#F2F2F7] dark:bg-black w-full rounded-t-[2.5rem] p-6 pb-safe pointer-events-auto animate-in slide-in-from-bottom-full">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-6 text-center">Add New Wallet</h2>
+            <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Wallet Name" className="w-full bg-white dark:bg-[#1C1C1E] text-gray-900 dark:text-white rounded-xl px-4 py-4 font-bold border border-gray-100 dark:border-[#2C2C2E] outline-none mb-4" />
+            <select value={currency} onChange={e => setCurrency(e.target.value)} className="w-full bg-white dark:bg-[#1C1C1E] text-gray-900 dark:text-white rounded-xl px-4 py-4 font-bold border border-gray-100 dark:border-[#2C2C2E] outline-none mb-6">
+              <option value="USD">USD ($)</option><option value="EUR">EUR (€)</option><option value="GBP">GBP (£)</option>
+            </select>
+            <button onClick={() => { onSave({ name, currency, iconString: 'Wallet' }); setName(''); onClose(); }} disabled={!name} className="w-full py-4 rounded-2xl font-bold text-white bg-emerald-500 disabled:opacity-50">Create</button>
+          </div>
+        </div>
+      );
+    }
+
+    function AddBudgetModal({ isOpen, onClose, onSave, wallets, activeWalletId }) {
+      const [amount, setAmount] = useState(''); const [categoryId, setCategoryId] = useState('food'); const [walletId, setWalletId] = useState(activeWalletId === 'all' ? wallets[0]?.id : activeWalletId);
+      if (!isOpen) return null;
+      return (
+        <div className="absolute inset-0 z-50 flex flex-col justify-end pointer-events-none">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-auto" onClick={onClose} />
+          <div className="bg-[#F2F2F7] dark:bg-black w-full rounded-t-[2.5rem] p-6 pb-safe pointer-events-auto animate-in slide-in-from-bottom-full max-h-[90%] overflow-y-auto">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-6 text-center">Set Budget</h2>
+            <input type="text" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value.replace(/[^0-9.]/g, ''))} placeholder="Amount" className="w-full bg-white dark:bg-[#1C1C1E] text-gray-900 dark:text-white rounded-xl px-4 py-4 font-bold border border-gray-100 dark:border-[#2C2C2E] outline-none mb-4" />
+            <div className="grid grid-cols-4 gap-2 mb-4 bg-white dark:bg-[#1C1C1E] p-4 rounded-2xl border border-gray-100 dark:border-[#2C2C2E]">
+              {Object.values(CATEGORIES).filter(c => c.type === 'expense').map(cat => (
+                <button key={cat.id} onClick={() => setCategoryId(cat.id)} className={`flex flex-col items-center justify-center p-2 rounded-xl transition-all ${categoryId === cat.id ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 border-2 border-emerald-500' : 'text-gray-500 dark:text-gray-400 border-2 border-transparent'}`}>
+                  <cat.icon className="w-5 h-5 mb-1" /><span className="text-[9px] font-bold truncate w-full">{cat.name}</span>
+                </button>
+              ))}
+            </div>
+            <button onClick={() => { onSave({ categoryId, limit: parseFloat(amount), walletId }); setAmount(''); onClose(); }} disabled={!amount} className="w-full py-4 rounded-2xl font-bold text-white bg-emerald-500 disabled:opacity-50">Save</button>
+          </div>
+        </div>
+      );
+    }
+
+    function WelcomeScreen({ onNavigate }) {
+      return (
+        <div className="absolute inset-0 z-50 bg-gradient-to-br from-emerald-400 to-emerald-600 flex flex-col items-center justify-between p-8 text-white animate-in fade-in">
+          <div className="flex-1 flex flex-col items-center justify-center space-y-6 w-full"><div className="w-24 h-24 bg-white/20 rounded-full flex items-center justify-center shadow-inner backdrop-blur-md"><Wallet className="w-12 h-12 text-white" /></div><div className="text-center"><h1 className="text-5xl font-black mb-3">Cashly</h1><p className="text-emerald-50 text-lg font-medium opacity-90">Your wealth, simplified.</p></div></div>
+          <div className="w-full space-y-4 pb-safe"><button onClick={() => onNavigate('signup')} className="w-full py-4 bg-white text-emerald-600 font-bold rounded-2xl shadow-lg active:scale-95 transition-transform">Get Started</button><button onClick={() => onNavigate('login')} className="w-full py-4 bg-emerald-500/50 border border-emerald-400/50 text-white font-bold rounded-2xl active:scale-95 transition-transform backdrop-blur-md">Log In</button></div>
+        </div>
+      );
+    }
+
+    function SignUpScreen({ onNavigate, auth }) {
+      const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [error, setError] = useState(null); const [loading, setLoading] = useState(false);
+      const handleAuth = async (method) => {
+        setLoading(true);
+        if(!auth) { setAuthMode('authenticated'); return; } // fallback
+        try { method === 'google' ? await signInWithPopup(auth, new GoogleAuthProvider()) : await createUserWithEmailAndPassword(auth, email, password); }
+        catch (err) { setError(err.message.replace('Firebase: ', '')); setLoading(false); }
+      };
+      return (
+        <div className="absolute inset-0 z-50 bg-white dark:bg-black flex flex-col animate-in slide-in-from-right duration-300">
+          <div className="p-6 pt-12 flex items-center"><button onClick={() => onNavigate('welcome')} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full"><ArrowLeft className="w-6 h-6 text-gray-900 dark:text-white" /></button></div>
+          <div className="flex-1 px-8 pt-4 overflow-y-auto"><h2 className="text-3xl font-black text-gray-900 dark:text-white mb-2">Create Account</h2><p className="text-gray-500 mb-6">Sign up to start managing your funds.</p>
+            {error && <div className="mb-4 p-3 bg-red-50 text-red-600 text-sm font-semibold rounded-xl border border-red-100">{error}</div>}
+            <div className="space-y-4"><input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email Address" className="w-full bg-gray-50 dark:bg-[#1C1C1E] text-gray-900 dark:text-white rounded-2xl px-5 py-4 outline-none" /><input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Password" className="w-full bg-gray-50 dark:bg-[#1C1C1E] text-gray-900 dark:text-white rounded-2xl px-5 py-4 outline-none" /></div>
+            <div className="mt-8 flex items-center gap-4"><div className="h-px flex-1 bg-gray-200 dark:bg-gray-800"></div><span className="text-xs font-bold text-gray-400">OR</span><div className="h-px flex-1 bg-gray-200 dark:bg-gray-800"></div></div>
+            <button onClick={() => handleAuth('google')} disabled={loading} className="w-full mt-8 flex items-center justify-center gap-3 py-4 border border-gray-200 dark:border-gray-800 text-gray-800 dark:text-white font-bold rounded-2xl active:scale-95 disabled:opacity-70"><svg className="w-5 h-5" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>Continue with Google</button>
+          </div>
+          <div className="p-6 pb-safe"><button onClick={() => handleAuth('email')} disabled={loading} className="w-full flex justify-center py-4 bg-emerald-500 text-white font-bold rounded-2xl active:scale-95 disabled:opacity-70">{loading ? <Loader2 className="w-6 h-6 animate-spin" /> : 'Sign Up'}</button></div>
+        </div>
+      );
+    }
+
+    function LoginScreen({ onNavigate, auth }) {
+      const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [error, setError] = useState(null); const [loading, setLoading] = useState(false);
+      const handleAuth = async (method) => {
+        setLoading(true);
+        if(!auth) { setAuthMode('authenticated'); return; } // fallback
+        try { method === 'google' ? await signInWithPopup(auth, new GoogleAuthProvider()) : await signInWithEmailAndPassword(auth, email, password); }
+        catch (err) { setError(err.message.replace('Firebase: ', '')); setLoading(false); }
+      };
+      return (
+        <div className="absolute inset-0 z-50 bg-white dark:bg-black flex flex-col animate-in slide-in-from-right duration-300">
+          <div className="p-6 pt-12 flex items-center"><button onClick={() => onNavigate('welcome')} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full"><ArrowLeft className="w-6 h-6 text-gray-900 dark:text-white" /></button></div>
+          <div className="flex-1 px-8 pt-4 overflow-y-auto"><h2 className="text-3xl font-black text-gray-900 dark:text-white mb-2">Welcome Back</h2><p className="text-gray-500 mb-6">Enter your details to log in.</p>
+            {error && <div className={`mb-4 p-3 text-sm font-semibold rounded-xl border ${error.includes('sent') ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-red-50 text-red-600 border-red-100'}`}>{error}</div>}
+            <div className="space-y-4"><input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email Address" className="w-full bg-gray-50 dark:bg-[#1C1C1E] text-gray-900 dark:text-white rounded-2xl px-5 py-4 outline-none" /><input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Password" className="w-full bg-gray-50 dark:bg-[#1C1C1E] text-gray-900 dark:text-white rounded-2xl px-5 py-4 outline-none" /></div>
+            <div className="mt-4 text-right"><button onClick={async () => { if(email) { try { await sendPasswordResetEmail(auth, email); setError("Reset email sent!"); } catch(e) { setError(e.message); } } else setError("Enter email first."); }} className="text-emerald-500 text-sm font-bold">Forgot Password?</button></div>
+            <div className="mt-8 flex items-center gap-4"><div className="h-px flex-1 bg-gray-200 dark:bg-gray-800"></div><span className="text-xs font-bold text-gray-400">OR</span><div className="h-px flex-1 bg-gray-200 dark:bg-gray-800"></div></div>
+            <button onClick={() => handleAuth('google')} disabled={loading} className="w-full mt-8 flex items-center justify-center gap-3 py-4 border border-gray-200 dark:border-gray-800 text-gray-800 dark:text-white font-bold rounded-2xl active:scale-95 disabled:opacity-70"><svg className="w-5 h-5" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>Continue with Google</button>
+          </div>
+          <div className="p-6 pb-safe"><button onClick={() => handleAuth('email')} disabled={loading} className="w-full flex justify-center py-4 bg-gray-900 dark:bg-white dark:text-gray-900 text-white font-bold rounded-2xl active:scale-95 disabled:opacity-70">{loading ? <Loader2 className="w-6 h-6 animate-spin" /> : 'Log In'}</button></div>
+        </div>
+      );
+    }
+
+    const root = createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+
+  <!-- PWA Service Worker Registration -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js')
+          .then(registration => console.log('ServiceWorker registered'))
+          .catch(err => console.log('ServiceWorker registration failed: ', err));
+      });
+    }
+  </script>
+</body>
+</html>

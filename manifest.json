@@ -1,0 +1,21 @@
+{
+  "name": "Cashly Finance",
+  "short_name": "Cashly",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#1C1C1E",
+  "theme_color": "#10b981",
+  "description": "Your wealth, simplified.",
+  "icons": [
+    {
+      "src": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Color_icon_green.svg/192px-Color_icon_green.svg.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Color_icon_green.svg/512px-Color_icon_green.svg.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
