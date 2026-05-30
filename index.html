@@ -8,7 +8,6 @@
   <meta name="theme-color" content="#10b981">
   <title>Cashly - Personal Finance</title>
   
-  <!-- Add the PWA Manifest Link -->
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Color_icon_green.svg/512px-Color_icon_green.svg.png">
 
@@ -21,24 +20,20 @@
     }
   </script>
   
-  <!-- Babel for JSX compilation in the browser -->
+  <!-- Babel for JSX compilation -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <style>
-    /* Hide scrollbar for clean UI */
     .scrollbar-hide::-webkit-scrollbar { display: none; }
     .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
-    
-    /* Safe area padding for iPhones */
     .pb-safe { padding-bottom: env(safe-area-inset-bottom, 20px); }
     
-    /* Smooth transitions */
-    .animate-in { animation: animateIn 0.3s ease-out forwards; }
-    .fade-in { opacity: 0; animation-name: fadeIn; }
-    .slide-in-from-bottom-full { transform: translateY(100%); animation-name: slideInBottom; }
-    .slide-in-from-right { transform: translateX(100%); animation-name: slideInRight; }
+    /* Apple-style spring animations */
+    .animate-in { animation: fadeIn 0.2s ease-out forwards; }
+    .spring-up { transform: translateY(100%); animation: springUp 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.1) forwards; }
+    .slide-in-right { transform: translateX(100%); animation: slideInRight 0.3s cubic-bezier(0.25, 0.8, 0.25, 1) forwards; }
     
-    @keyframes fadeIn { to { opacity: 1; } }
-    @keyframes slideInBottom { to { transform: translateY(0); } }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes springUp { to { transform: translateY(0); } }
     @keyframes slideInRight { to { transform: translateX(0); } }
   </style>
 </head>
@@ -54,7 +49,7 @@
       ChevronLeft, ChevronRight, TrendingDown, TrendingUp, Home, 
       Target, Globe, CreditCard, RefreshCw, MoreHorizontal, ArrowRightLeft,
       Heart, Book, Repeat, Zap, Landmark, Shield, LogOut, ChevronRight as ChevronRightIcon,
-      User, HelpCircle, Info, Loader2, Trophy, Clock, AlertCircle
+      User, HelpCircle, Info, Loader2, Trophy, Clock, AlertCircle, Trash2, Rocket
     } from 'https://esm.sh/lucide-react@0.292.0?deps=react@18.2.0';
 
     // --- FIREBASE SETUP ---
@@ -65,10 +60,10 @@
       GoogleAuthProvider, signInWithPopup, sendPasswordResetEmail
     } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
     import { 
-      getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc, updateDoc, enableIndexedDbPersistence
+      getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc, enableIndexedDbPersistence
     } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 
-    // IMPORTANT: When hosting on GitHub, replace these empty strings with your free Firebase project config
+    // IMPORTANT: Replace with your Firebase config if needed.
     const githubFirebaseConfig = {
       apiKey: "AIzaSyDOwnNc4ZOlcomQkyvc2wRcfk1NICBkhQs",
       authDomain: "cashlyapp-25956.firebaseapp.com",
@@ -88,14 +83,27 @@
         app = initializeApp(firebaseConfig);
         auth = getAuth(app);
         db = getFirestore(app);
-        
-        try {
-          enableIndexedDbPersistence(db).catch(err => console.warn("Persistence error:", err.code));
-        } catch (e) { console.warn("Could not enable offline persistence"); }
+        try { enableIndexedDbPersistence(db).catch(err => console.warn("Persistence error:", err.code)); } 
+        catch (e) { console.warn("Could not enable offline persistence"); }
       }
-    } catch(e) {
-      console.error("Firebase init failed:", e);
-    }
+    } catch(e) { console.error("Firebase init failed:", e); }
+
+    const isMissingConfig = !auth;
+
+    // --- UI UTILS ---
+    const vibrate = () => { if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(30); };
+
+    // --- CUSTOM LOGO ---
+    const CashlyLogo = ({ className }) => (
+      <svg viewBox="0 0 100 100" className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect width="100" height="100" rx="24" fill="#111" />
+        <path d="M20 20 L30 20 M80 20 L80 30 M20 80 L30 80 M80 80 L80 70" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" opacity="0.3"/>
+        <path d="M50 25 L50 75" stroke="#4ade80" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M65 35 C 65 25, 35 25, 35 40 C 35 55, 65 55, 65 70 C 65 85, 35 85, 35 85" stroke="#4ade80" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M65 35 L75 25 M75 25 L60 25" stroke="#4ade80" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M35 75 L25 85 M25 85 L40 85" stroke="#4ade80" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    );
 
     // --- MOCK DATA & CONFIG ---
     const EX_RATES = { USD: 1, EUR: 1.08, GBP: 1.25, JPY: 0.0066, INR: 0.012 };
@@ -137,14 +145,13 @@
       const [user, setUser] = useState(null);
       const [authLoading, setAuthLoading] = useState(true);
       const [authMode, setAuthMode] = useState('welcome'); 
-      const [isMissingConfig, setIsMissingConfig] = useState(!auth);
       
       const [transactions, setTransactions] = useState([]);
       const [wallets, setWallets] = useState([]);
       const [budgets, setBudgets] = useState([]);
       const [goals, setGoals] = useState([]);
       const [bills, setBills] = useState([]);
-      const [preferences, setPreferences] = useState({ baseCurrency: 'USD', isDarkMode: false, faceId: true, budgetAlerts: true });
+      const [preferences, setPreferences] = useState({ baseCurrency: 'USD', isDarkMode: false, faceId: false, securityPin: null, budgetAlerts: true });
       
       const [activeWalletId, setActiveWalletId] = useState('all'); 
       const [currentTab, setCurrentTab] = useState('transactions');
@@ -158,18 +165,19 @@
       const [isNotifOpen, setIsNotifOpen] = useState(false);
       const [isAddBillOpen, setIsAddBillOpen] = useState(false);
 
-      // Setup initial state from localStorage if running on GitHub without keys
+      // SECURITY STATES
+      const [isLocked, setIsLocked] = useState(() => !!(JSON.parse(localStorage.getItem('cashly_prefs')) || {}).securityPin);
+      const [isPinSetupOpen, setIsPinSetupOpen] = useState(false);
+
       useEffect(() => {
         if (isMissingConfig) {
           const loadLocal = (key, defaultVal) => JSON.parse(localStorage.getItem(key)) || defaultVal;
-          
           setWallets(loadLocal('cashly_wallets', [{ id: 'w1', name: 'Main Wallet', currency: 'USD', iconString: 'Wallet' }]));
           setTransactions(loadLocal('cashly_transactions', []));
           setBudgets(loadLocal('cashly_budgets', []));
           setGoals(loadLocal('cashly_goals', []));
           setBills(loadLocal('cashly_bills', []));
           setPreferences(loadLocal('cashly_prefs', { baseCurrency: 'USD', isDarkMode: false, faceId: true, budgetAlerts: true }));
-          
           setAuthLoading(false);
           setUser({ uid: 'local', email: 'Local Device Mode', displayName: 'Offline User' });
           setAuthMode('authenticated');
@@ -219,6 +227,7 @@
       const activeWallet = activeWalletId === 'all' ? { id: 'all', name: 'All Wallets', currency: preferences.baseCurrency } : wallets.find(w => w.id === activeWalletId) || wallets[0] || { name: 'Loading...', currency: 'USD' };
       
       const cycleWallet = () => {
+        vibrate();
         if (wallets.length === 0) return;
         const sequence = ['all', ...wallets.map(w => w.id)];
         setActiveWalletId(sequence[(sequence.indexOf(activeWalletId) + 1) % sequence.length]);
@@ -269,25 +278,11 @@
       const saveToFirebase = async (collectionName, data, id = null) => {
         if (isMissingConfig) {
           const newData = { ...data, id: id || Date.now().toString() };
-          if (collectionName === 'transactions') {
-             setTransactions(prev => { const next = [newData, ...prev]; localStorage.setItem('cashly_transactions', JSON.stringify(next)); return next; });
-          }
-          if (collectionName === 'wallets') {
-             setWallets(prev => { const next = [...prev, newData]; localStorage.setItem('cashly_wallets', JSON.stringify(next)); return next; });
-          }
-          if (collectionName === 'budgets') {
-             setBudgets(prev => { const next = [...prev, newData]; localStorage.setItem('cashly_budgets', JSON.stringify(next)); return next; });
-          }
-          if (collectionName === 'goals') {
-             setGoals(prev => { 
-               const next = id ? prev.map(g => g.id === id ? {...g, ...data} : g) : [...prev, newData]; 
-               localStorage.setItem('cashly_goals', JSON.stringify(next)); 
-               return next; 
-             });
-          }
-          if (collectionName === 'bills') {
-             setBills(prev => { const next = [...prev, newData]; localStorage.setItem('cashly_bills', JSON.stringify(next)); return next; });
-          }
+          if (collectionName === 'transactions') { setTransactions(p => { const n = [newData, ...p]; localStorage.setItem('cashly_transactions', JSON.stringify(n)); return n; }); }
+          if (collectionName === 'wallets') { setWallets(p => { const n = [...p, newData]; localStorage.setItem('cashly_wallets', JSON.stringify(n)); return n; }); }
+          if (collectionName === 'budgets') { setBudgets(p => { const n = [...p, newData]; localStorage.setItem('cashly_budgets', JSON.stringify(n)); return n; }); }
+          if (collectionName === 'goals') { setGoals(p => { const n = id ? p.map(g => g.id === id ? {...g, ...data} : g) : [...p, newData]; localStorage.setItem('cashly_goals', JSON.stringify(n)); return n; }); }
+          if (collectionName === 'bills') { setBills(p => { const n = [...p, newData]; localStorage.setItem('cashly_bills', JSON.stringify(n)); return n; }); }
           return;
         }
 
@@ -298,12 +293,18 @@
         } catch (err) { console.error(`Error saving ${collectionName}`, err); }
       };
 
+      const deleteFromFirebase = async (collectionName, id) => {
+        if (isMissingConfig) {
+          if (collectionName === 'wallets') { setWallets(p => { const n = p.filter(w => w.id !== id); localStorage.setItem('cashly_wallets', JSON.stringify(n)); return n; }); }
+          return;
+        }
+        if (!user) return;
+        try { await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, collectionName, id)); } 
+        catch (err) { console.error(`Error deleting ${collectionName}`, err); }
+      };
+
       const updatePreference = (key, value) => {
-        setPreferences(p => {
-           const next = { ...p, [key]: value };
-           if (isMissingConfig) localStorage.setItem('cashly_prefs', JSON.stringify(next));
-           return next;
-        });
+        setPreferences(p => { const next = { ...p, [key]: value }; if (isMissingConfig) localStorage.setItem('cashly_prefs', JSON.stringify(next)); return next; });
         if (!isMissingConfig) saveToFirebase('settings', { [key]: value }, 'preferences');
       };
 
@@ -311,7 +312,7 @@
         if (activeWalletId === 'all') return 'bg-gradient-to-br from-gray-900 to-gray-800 dark:from-black dark:to-gray-950';
         if (currentTab === 'planning') return 'bg-gradient-to-br from-indigo-600 to-purple-600 dark:from-indigo-900 dark:to-purple-900';
         if (currentTab === 'settings') return 'bg-[#F2F2F7] dark:bg-black text-gray-900 dark:text-white';
-        return 'bg-gradient-to-br from-emerald-500 to-teal-600 dark:from-emerald-700 dark:to-teal-900';
+        return 'bg-gradient-to-br from-emerald-500 to-teal-600 dark:from-emerald-800 dark:to-teal-900';
       };
 
       return (
@@ -325,125 +326,133 @@
             ) : (
               <div className="w-full max-w-md h-[100dvh] sm:h-[100vh] sm:max-h-[850px] sm:rounded-[40px] sm:border-[8px] border-gray-800 dark:border-gray-700 bg-[#F2F2F7] dark:bg-black overflow-hidden relative flex flex-col shadow-2xl transition-colors duration-300">
                 
-                {!user && authMode === 'welcome' && <WelcomeScreen onNavigate={setAuthMode} />}
-                {!user && authMode === 'signup' && <SignUpScreen onNavigate={setAuthMode} auth={auth} />}
-                {!user && authMode === 'login' && <LoginScreen onNavigate={setAuthMode} auth={auth} />}
-                
-                {user && (
+                {isLocked ? (
+                  <LockScreen pin={preferences.securityPin || (JSON.parse(localStorage.getItem('cashly_prefs'))||{}).securityPin} onUnlock={() => setIsLocked(false)} />
+                ) : (
                   <>
-                    <div className={`${getHeaderStyle()} pt-14 pb-6 px-6 ${currentTab === 'settings' ? 'text-gray-900 dark:text-white' : 'text-white'} rounded-b-[2rem] shadow-sm z-10 flex-shrink-0 transition-colors duration-500 relative overflow-hidden`}>
-                      <div className="flex justify-between items-center mb-6 relative z-10">
-                        <div 
-                          onClick={currentTab === 'transactions' || currentTab === 'planning' ? cycleWallet : undefined}
-                          className={`flex items-center gap-2 py-1.5 px-3 rounded-full transition-all ${(currentTab === 'transactions' || currentTab === 'planning') ? (currentTab === 'settings' ? 'bg-black/5 dark:bg-white/10 hover:bg-black/10' : 'bg-white/20 hover:bg-white/30') + ' cursor-pointer backdrop-blur-md' : 'bg-transparent'}`}
-                        >
-                          {(currentTab === 'transactions' || currentTab === 'planning') ? <RefreshCw className="w-4 h-4" /> : <Wallet className="w-4 h-4" />}
-                          <span className="font-semibold text-sm">
-                            {currentTab === 'settings' ? 'Settings' : activeWallet.name}
-                          </span>
+                    {!user && authMode === 'welcome' && <WelcomeScreen onNavigate={(m) => {vibrate(); setAuthMode(m)}} />}
+                    {!user && authMode === 'signup' && <SignUpScreen onNavigate={(m) => {vibrate(); setAuthMode(m)}} auth={auth} />}
+                    {!user && authMode === 'login' && <LoginScreen onNavigate={(m) => {vibrate(); setAuthMode(m)}} auth={auth} />}
+                    
+                    {user && (
+                      <>
+                        <div className={`${getHeaderStyle()} pt-14 pb-6 px-6 ${currentTab === 'settings' ? 'text-gray-900 dark:text-white' : 'text-white'} rounded-b-[2rem] shadow-sm z-10 flex-shrink-0 transition-colors duration-500 relative overflow-hidden`}>
+                          <div className="flex justify-between items-center mb-6 relative z-10">
+                            <div 
+                              onClick={currentTab === 'transactions' || currentTab === 'planning' ? cycleWallet : undefined}
+                              className={`flex items-center gap-2 py-1.5 px-3 rounded-full transition-all ${(currentTab === 'transactions' || currentTab === 'planning') ? (currentTab === 'settings' ? 'bg-black/5 dark:bg-white/10 hover:bg-black/10' : 'bg-white/20 hover:bg-white/30') + ' cursor-pointer backdrop-blur-md active:scale-95' : 'bg-transparent'}`}
+                            >
+                              {(currentTab === 'transactions' || currentTab === 'planning') ? <RefreshCw className="w-4 h-4" /> : <Wallet className="w-4 h-4" />}
+                              <span className="font-semibold text-sm truncate max-w-[120px]">
+                                {currentTab === 'settings' ? 'Settings' : activeWallet.name}
+                              </span>
+                            </div>
+                            {currentTab !== 'settings' && (
+                              <button onClick={() => {vibrate(); setIsNotifOpen(true)}} className="p-2 hover:bg-white/20 rounded-full transition-colors relative active:scale-90">
+                                <Bell className="w-5 h-5" />
+                                {upcomingBills.length > 0 && <span className="absolute top-1 right-2 w-2.5 h-2.5 bg-rose-500 rounded-full border-2 border-transparent animate-pulse"></span>}
+                              </button>
+                            )}
+                          </div>
+
+                          {currentTab !== 'settings' && (
+                            <div className="text-center mb-4 relative z-10 animate-in fade-in">
+                              <p className="opacity-80 text-sm font-medium mb-1">
+                                {currentTab === 'planning' ? 'Total Planning Pool' : 'Total Balance'}
+                              </p>
+                              <h1 className="text-4xl font-bold tracking-tight">
+                                {formatCurrency(balance, activeWallet.currency)}
+                              </h1>
+                            </div>
+                          )}
+
+                          {currentTab === 'transactions' && (
+                            <div className="flex justify-between items-center bg-black/10 dark:bg-white/5 rounded-2xl p-4 mt-6 backdrop-blur-md border border-white/10 dark:border-white/5 animate-in slide-in-right">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center shadow-inner">
+                                  <TrendingDown className="w-5 h-5 text-white" />
+                                </div>
+                                <div>
+                                  <p className="text-white/80 text-xs font-medium">Income</p>
+                                  <p className="font-semibold">{formatCurrency(totalIncome, activeWallet.currency)}</p>
+                                </div>
+                              </div>
+                              <div className="w-px h-8 bg-white/20"></div>
+                              <div className="flex items-center gap-3">
+                                <div>
+                                  <p className="text-white/80 text-xs font-medium text-right">Expenses</p>
+                                  <p className="font-semibold">{formatCurrency(totalExpense, activeWallet.currency)}</p>
+                                </div>
+                                <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center shadow-inner">
+                                  <TrendingUp className="w-5 h-5 text-white" />
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </div>
-                        {currentTab !== 'settings' && (
-                          <button onClick={() => setIsNotifOpen(true)} className="p-2 hover:bg-white/20 rounded-full transition-colors relative">
-                            <Bell className="w-5 h-5" />
-                            {upcomingBills.length > 0 && <span className="absolute top-1 right-2 w-2.5 h-2.5 bg-rose-500 rounded-full border-2 border-transparent"></span>}
-                          </button>
+
+                        {isMissingConfig && (
+                          <div className="bg-orange-500 text-white text-xs font-bold p-2 text-center shadow-sm">
+                            Running in offline browser mode (No cloud sync).
+                          </div>
                         )}
-                      </div>
 
-                      {currentTab !== 'settings' && (
-                        <div className="text-center mb-4 relative z-10 animate-in fade-in slide-in-from-bottom-2">
-                          <p className="opacity-80 text-sm font-medium mb-1">
-                            {currentTab === 'planning' ? 'Total Planning Pool' : 'Total Balance'}
-                          </p>
-                          <h1 className="text-4xl font-bold tracking-tight">
-                            {formatCurrency(balance, activeWallet.currency)}
-                          </h1>
+                        {currentTab !== 'settings' && (
+                          <div className="flex items-center justify-between px-6 py-4 bg-[#F2F2F7] dark:bg-black border-b border-gray-200/60 dark:border-[#2C2C2E] flex-shrink-0 z-0">
+                            <button onClick={() => {vibrate(); setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1))}} className="p-2 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-full transition-colors active:scale-90">
+                              <ChevronLeft className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+                            </button>
+                            <span className="font-semibold text-gray-700 dark:text-gray-300">
+                              {new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(currentMonth)}
+                            </span>
+                            <button onClick={() => {vibrate(); setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1))}} className="p-2 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-full transition-colors active:scale-90">
+                              <ChevronRight className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+                            </button>
+                          </div>
+                        )}
+
+                        <div className="flex-1 overflow-y-auto pb-28 relative z-0">
+                          {currentTab === 'transactions' && (
+                            <RecordsView transactions={monthTransactions} currency={activeWallet.currency} formatCurrency={formatCurrency} wallets={wallets} activeWalletId={activeWalletId} onAdd={() => setIsAddOpen(true)} />
+                          )}
+                          {currentTab === 'analytics' && (
+                            <AnalyticsView transactions={monthTransactions} totalExpense={totalExpense} currency={activeWallet.currency} formatCurrency={formatCurrency} />
+                          )}
+                          {currentTab === 'planning' && (
+                            <PlanningView transactions={monthTransactions} budgets={budgets.filter(b=>activeWalletId==='all'||b.walletId===activeWalletId)} goals={goals} currency={activeWallet.currency} formatCurrency={formatCurrency} onAddBudget={() => {vibrate(); setIsAddBudgetOpen(true)}} onAddGoal={() => {vibrate(); setIsAddGoalOpen(true)}} onFundGoal={(g) => {vibrate(); setIsFundGoalOpen(g)}} />
+                          )}
+                          {currentTab === 'settings' && (
+                            <SettingsView user={user} wallets={wallets} prefs={preferences} setPref={updatePreference} onAddWallet={() => {vibrate(); setIsAddWalletOpen(true)}} onDeleteWallet={(id) => { deleteFromFirebase('wallets', id); if(activeWalletId === id) setActiveWalletId('all'); }} onLogout={() => {vibrate(); auth ? signOut(auth) : setAuthMode('welcome')}} onEnableSecurity={() => {vibrate(); setIsPinSetupOpen(true)}} />
+                          )}
                         </div>
-                      )}
 
-                      {currentTab === 'transactions' && (
-                        <div className="flex justify-between items-center bg-black/10 dark:bg-white/5 rounded-2xl p-4 mt-6 backdrop-blur-md border border-white/10 dark:border-white/5">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center shadow-inner">
-                              <TrendingDown className="w-5 h-5 text-white" />
-                            </div>
-                            <div>
-                              <p className="text-white/80 text-xs font-medium">Income</p>
-                              <p className="font-semibold">{formatCurrency(totalIncome, activeWallet.currency)}</p>
+                        <div className="absolute bottom-0 w-full bg-white/70 dark:bg-[#1C1C1E]/80 saturate-150 backdrop-blur-xl border-t border-gray-200/50 dark:border-[#2C2C2E]/50 pb-safe sm:pb-0 px-6 h-24 flex items-center justify-between z-20">
+                          <NavItem icon={List} label="Records" active={currentTab === 'transactions'} onClick={() => {vibrate(); setCurrentTab('transactions')}} />
+                          <NavItem icon={PieChart} label="Analytics" active={currentTab === 'analytics'} onClick={() => {vibrate(); setCurrentTab('analytics')}} />
+                          <div className="w-16"></div>
+                          <NavItem icon={Target} label="Planning" active={currentTab === 'planning'} onClick={() => {vibrate(); setCurrentTab('planning')}} />
+                          <NavItem icon={Settings} label="Settings" active={currentTab === 'settings'} onClick={() => {vibrate(); setCurrentTab('settings')}} />
+                          
+                          {/* Polished Layered FAB */}
+                          <div className="absolute -top-8 left-1/2 -translate-x-1/2 z-30">
+                            <div className="w-[76px] h-[76px] rounded-full bg-emerald-400/20 dark:bg-emerald-500/20 p-2 flex items-center justify-center backdrop-blur-xl">
+                              <button onClick={() => { vibrate(); setIsAddOpen(true); }} className="w-full h-full bg-emerald-400 dark:bg-emerald-500 rounded-full flex items-center justify-center text-white shadow-[0_4px_15px_rgba(52,211,153,0.5)] active:scale-90 transition-all duration-300">
+                                <Plus className="w-8 h-8" strokeWidth={2.5} />
+                              </button>
                             </div>
                           </div>
-                          <div className="w-px h-8 bg-white/20"></div>
-                          <div className="flex items-center gap-3">
-                            <div>
-                              <p className="text-white/80 text-xs font-medium text-right">Expenses</p>
-                              <p className="font-semibold">{formatCurrency(totalExpense, activeWallet.currency)}</p>
-                            </div>
-                            <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center shadow-inner">
-                              <TrendingUp className="w-5 h-5 text-white" />
-                            </div>
-                          </div>
                         </div>
-                      )}
-                    </div>
 
-                    {isMissingConfig && (
-                      <div className="bg-orange-500 text-white text-xs font-bold p-2 text-center shadow-sm">
-                        No Firebase Config! Running in offline temporary mode.
-                      </div>
+                        <AddTransactionModal isOpen={isAddOpen} onClose={() => setIsAddOpen(false)} onSave={(data) => saveToFirebase('transactions', data)} wallets={wallets} initialWalletId={activeWalletId === 'all' ? (wallets[0]?.id || '') : activeWalletId} />
+                        <AddWalletModal isOpen={isAddWalletOpen} onClose={() => setIsAddWalletOpen(false)} onSave={(data) => saveToFirebase('wallets', data)} />
+                        <AddBudgetModal isOpen={isAddBudgetOpen} onClose={() => setIsAddBudgetOpen(false)} onSave={(data) => saveToFirebase('budgets', data)} wallets={wallets} activeWalletId={activeWalletId} />
+                        <AddGoalModal isOpen={isAddGoalOpen} onClose={() => setIsAddGoalOpen(false)} onSave={(data) => saveToFirebase('goals', data)} />
+                        <FundGoalModal goal={isFundGoalOpen} onClose={() => setIsFundGoalOpen(null)} onSave={(id, newAmount) => saveToFirebase('goals', { currentAmount: newAmount }, id)} formatCurrency={formatCurrency} currency={activeWallet.currency} />
+                        <NotificationsModal isOpen={isNotifOpen} onClose={() => setIsNotifOpen(false)} bills={upcomingBills} allBills={bills} onAddBill={() => { setIsNotifOpen(false); setIsAddBillOpen(true); }} formatCurrency={formatCurrency} currency={activeWallet.currency} />
+                        <AddBillModal isOpen={isAddBillOpen} onClose={() => setIsAddBillOpen(false)} onSave={(data) => saveToFirebase('bills', data)} />
+                        <PinSetupModal isOpen={isPinSetupOpen} onClose={() => setIsPinSetupOpen(false)} onSave={(pin) => { updatePreference('securityPin', pin); updatePreference('faceId', true); setIsPinSetupOpen(false); }} />
+                      </>
                     )}
-
-                    {currentTab !== 'settings' && (
-                      <div className="flex items-center justify-between px-6 py-4 bg-[#F2F2F7] dark:bg-black border-b border-gray-200/60 dark:border-[#2C2C2E] flex-shrink-0 z-0">
-                        <button onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1))} className="p-2 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-full transition-colors">
-                          <ChevronLeft className="w-5 h-5 text-gray-500 dark:text-gray-400" />
-                        </button>
-                        <span className="font-semibold text-gray-700 dark:text-gray-300">
-                          {new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(currentMonth)}
-                        </span>
-                        <button onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1))} className="p-2 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-full transition-colors">
-                          <ChevronRight className="w-5 h-5 text-gray-500 dark:text-gray-400" />
-                        </button>
-                      </div>
-                    )}
-
-                    <div className="flex-1 overflow-y-auto pb-28 relative z-0">
-                      {currentTab === 'transactions' && (
-                        <RecordsView transactions={monthTransactions} currency={activeWallet.currency} formatCurrency={formatCurrency} wallets={wallets} activeWalletId={activeWalletId} />
-                      )}
-                      {currentTab === 'analytics' && (
-                        <AnalyticsView transactions={monthTransactions} totalExpense={totalExpense} currency={activeWallet.currency} formatCurrency={formatCurrency} />
-                      )}
-                      {currentTab === 'planning' && (
-                        <PlanningView transactions={monthTransactions} budgets={budgets.filter(b=>activeWalletId==='all'||b.walletId===activeWalletId)} goals={goals} currency={activeWallet.currency} formatCurrency={formatCurrency} onAddBudget={() => setIsAddBudgetOpen(true)} onAddGoal={() => setIsAddGoalOpen(true)} onFundGoal={(g) => setIsFundGoalOpen(g)} />
-                      )}
-                      {currentTab === 'settings' && (
-                        <SettingsView user={user} wallets={wallets} prefs={preferences} setPref={updatePreference} onAddWallet={() => setIsAddWalletOpen(true)} onLogout={() => auth ? signOut(auth) : setAuthMode('welcome')} />
-                      )}
-                    </div>
-
-                    <div className="absolute bottom-0 w-full bg-white/70 dark:bg-[#1C1C1E]/80 saturate-150 backdrop-blur-xl border-t border-gray-200/50 dark:border-[#2C2C2E]/50 pb-safe sm:pb-0 px-6 h-24 flex items-center justify-between z-20">
-                      <NavItem icon={List} label="Records" active={currentTab === 'transactions'} onClick={() => setCurrentTab('transactions')} />
-                      <NavItem icon={PieChart} label="Analytics" active={currentTab === 'analytics'} onClick={() => setCurrentTab('analytics')} />
-                      <div className="w-16"></div>
-                      <NavItem icon={Target} label="Planning" active={currentTab === 'planning'} onClick={() => setCurrentTab('planning')} />
-                      <NavItem icon={Settings} label="Settings" active={currentTab === 'settings'} onClick={() => setCurrentTab('settings')} />
-                      
-                      <div className="absolute -top-7 left-1/2 -translate-x-1/2 z-30 flex items-center justify-center">
-                        <div className="w-[72px] h-[72px] rounded-full bg-emerald-400/25 dark:bg-emerald-500/20 p-2 flex items-center justify-center shadow-[0_8px_32px_rgba(16,185,129,0.25)] backdrop-blur-md">
-                          <button onClick={() => setIsAddOpen(true)} className="w-full h-full bg-gradient-to-br from-emerald-400 to-emerald-500 dark:from-emerald-500 dark:to-emerald-600 rounded-full flex items-center justify-center text-white shadow-sm transition-transform active:scale-90">
-                            <Plus className="w-8 h-8" strokeWidth={2.5} />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    <AddTransactionModal isOpen={isAddOpen} onClose={() => setIsAddOpen(false)} onSave={(data) => saveToFirebase('transactions', data)} wallets={wallets} initialWalletId={activeWalletId === 'all' ? (wallets[0]?.id || '') : activeWalletId} />
-                    <AddWalletModal isOpen={isAddWalletOpen} onClose={() => setIsAddWalletOpen(false)} onSave={(data) => saveToFirebase('wallets', data)} />
-                    <AddBudgetModal isOpen={isAddBudgetOpen} onClose={() => setIsAddBudgetOpen(false)} onSave={(data) => saveToFirebase('budgets', data)} wallets={wallets} activeWalletId={activeWalletId} />
-                    <AddGoalModal isOpen={isAddGoalOpen} onClose={() => setIsAddGoalOpen(false)} onSave={(data) => saveToFirebase('goals', data)} />
-                    <FundGoalModal goal={isFundGoalOpen} onClose={() => setIsFundGoalOpen(null)} onSave={(id, newAmount) => saveToFirebase('goals', { currentAmount: newAmount }, id)} formatCurrency={formatCurrency} currency={activeWallet.currency} />
-                    <NotificationsModal isOpen={isNotifOpen} onClose={() => setIsNotifOpen(false)} bills={upcomingBills} allBills={bills} onAddBill={() => { setIsNotifOpen(false); setIsAddBillOpen(true); }} formatCurrency={formatCurrency} currency={activeWallet.currency} />
-                    <AddBillModal isOpen={isAddBillOpen} onClose={() => setIsAddBillOpen(false)} onSave={(data) => saveToFirebase('bills', data)} />
                   </>
                 )}
               </div>
@@ -453,8 +462,47 @@
       );
     }
 
+    // --- REUSABLE EMPTY STATE ---
+    function EmptyState({ icon: Icon, title, subtitle, actionLabel, onAction, color }) {
+      return (
+        <div className="h-full flex flex-col items-center justify-center text-center space-y-6 pt-16 px-6 animate-in">
+          <div className={`w-28 h-28 rounded-full ${color} flex items-center justify-center shadow-lg ring-8 ring-white/50 dark:ring-black/20`}>
+            <Icon className="w-12 h-12 text-white" />
+          </div>
+          <div>
+            <h3 className="text-xl font-black text-gray-900 dark:text-white mb-2">{title}</h3>
+            <p className="text-[15px] font-medium text-gray-500 dark:text-gray-400">{subtitle}</p>
+          </div>
+          {actionLabel && (
+            <button onClick={() => { vibrate(); onAction(); }} className="px-8 py-3.5 bg-gray-900 dark:bg-white text-white dark:text-gray-900 font-bold rounded-2xl shadow-lg active:scale-95 transition-all duration-300">
+              {actionLabel}
+            </button>
+          )}
+        </div>
+      );
+    }
+
+    // --- CUSTOM CONFIRM MODAL ---
+    function ConfirmDialog({ isOpen, onClose, onConfirm, title, message, isDestructive }) {
+      if (!isOpen) return null;
+      return (
+        <div className="absolute inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in" onClick={onClose}>
+          <div className="bg-white dark:bg-[#1C1C1E] rounded-3xl w-full max-w-[300px] shadow-2xl overflow-hidden flex flex-col text-center" onClick={e => e.stopPropagation()}>
+            <div className="p-6">
+              <h3 className="font-bold text-xl text-gray-900 dark:text-white mb-2">{title}</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400">{message}</p>
+            </div>
+            <div className="flex border-t border-gray-100 dark:border-[#2C2C2E]">
+              <button onClick={onClose} className="flex-1 py-4 font-bold text-gray-600 dark:text-gray-300 border-r border-gray-100 dark:border-[#2C2C2E] hover:bg-gray-50 dark:hover:bg-[#2C2C2E] active:bg-gray-100">Cancel</button>
+              <button onClick={() => { vibrate(); onConfirm(); onClose(); }} className={`flex-1 py-4 font-bold hover:bg-gray-50 dark:hover:bg-[#2C2C2E] active:bg-gray-100 ${isDestructive ? 'text-rose-500' : 'text-emerald-500'}`}>Confirm</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     // --- TAB VIEWS ---
-    function RecordsView({ transactions, currency, formatCurrency, wallets, activeWalletId }) {
+    function RecordsView({ transactions, currency, formatCurrency, wallets, activeWalletId, onAdd }) {
       const groupedTransactions = useMemo(() => {
         const groups = {};
         transactions.forEach(t => {
@@ -477,25 +525,16 @@
       }, [transactions, activeWalletId, wallets]);
 
       if (groupedTransactions.length === 0) {
-        return (
-          <div className="h-full flex flex-col items-center justify-center text-gray-400 space-y-4 pt-20">
-            <div className="w-20 h-20 bg-gray-200/50 dark:bg-gray-800/50 rounded-full flex items-center justify-center shadow-inner">
-              <List className="w-8 h-8 text-gray-400 dark:text-gray-500" />
-            </div>
-            <p className="font-medium text-gray-500">No transactions this month.</p>
-          </div>
-        );
+        return <EmptyState icon={Rocket} color="bg-gradient-to-br from-emerald-400 to-teal-500" title="Nothing here yet!" subtitle="Your financial journey starts with a single step. Add an expense or income." actionLabel="Add Transaction" onAction={onAdd} />;
       }
 
       return (
         <div className="px-4 py-4 space-y-6">
           {groupedTransactions.map((group, index) => (
-            <div key={index} className="animate-in slide-in-from-bottom-4 duration-500" style={{ animationDelay: `${index * 50}ms`, animationFillMode: 'both' }}>
+            <div key={index} className="animate-in" style={{ animationDelay: `${index * 50}ms`, animationFillMode: 'both' }}>
               <div className="flex justify-between items-center px-2 mb-2">
                 <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">{formatDateHeader(group.date)}</span>
-                <span className="text-xs font-bold text-gray-400">
-                  {group.total > 0 ? '+' : ''}{formatCurrency(group.total, currency)}
-                </span>
+                <span className="text-xs font-bold text-gray-400">{group.total > 0 ? '+' : ''}{formatCurrency(group.total, currency)}</span>
               </div>
               <div className="bg-white dark:bg-[#1C1C1E] rounded-3xl shadow-[0_2px_10px_rgba(0,0,0,0.03)] border border-gray-100 dark:border-[#2C2C2E] overflow-hidden transition-colors duration-300">
                 {group.items.map((tx, i) => {
@@ -510,13 +549,9 @@
                     <div key={tx.id} className={`flex items-center justify-between p-4 hover:bg-gray-50 dark:hover:bg-[#2C2C2E] cursor-pointer transition-colors group ${i !== group.items.length - 1 ? 'border-b border-gray-50 dark:border-[#2C2C2E]' : ''}`}>
                       <div className="flex items-center gap-4">
                         {isTransfer ? (
-                          <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 group-hover:scale-105 transition-transform">
-                            <ArrowRightLeft className="w-6 h-6" />
-                          </div>
+                          <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 group-hover:scale-105 transition-transform"><ArrowRightLeft className="w-6 h-6" /></div>
                         ) : (
-                          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-sm ${category?.bg} group-hover:scale-105 transition-transform`}>
-                            {category && <category.icon className="w-6 h-6" />}
-                          </div>
+                          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-sm ${category?.bg} group-hover:scale-105 transition-transform`}>{category && <category.icon className="w-6 h-6" />}</div>
                         )}
                         <div>
                           <p className="font-semibold text-gray-900 dark:text-gray-100 text-[15px]">{isTransfer ? 'Transfer' : category?.name}</p>
@@ -549,23 +584,18 @@
       }, [transactions, totalExpense]);
 
       if (analyticsData.length === 0) {
-        return (
-          <div className="h-full flex flex-col items-center justify-center text-gray-400 space-y-4 pt-20">
-            <PieChart className="w-12 h-12 text-gray-300 dark:text-gray-600" />
-            <p>Not enough data for analytics.</p>
-          </div>
-        );
+        return <EmptyState icon={PieChart} color="bg-gradient-to-br from-gray-400 to-gray-600" title="No Data to Analyze" subtitle="Keep logging your expenses to unlock beautiful insights." />;
       }
 
       return (
-        <div className="px-4 py-6 space-y-8 animate-in fade-in duration-500">
+        <div className="px-4 py-6 space-y-8 animate-in duration-500">
           <div className="bg-white dark:bg-[#1C1C1E] rounded-3xl p-6 shadow-[0_2px_15px_rgba(0,0,0,0.03)] border border-gray-100 dark:border-[#2C2C2E] flex flex-col items-center justify-center h-64 relative transition-colors duration-300">
             <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
                <span className="text-gray-400 text-xs font-semibold uppercase tracking-wider mb-1">Total Expenses</span>
                <span className="text-3xl font-bold text-gray-900 dark:text-white">{formatCurrency(totalExpense, currency)}</span>
             </div>
-            <svg width="200" height="200" viewBox="0 0 200 200" className="transform -rotate-90">
-              <circle cx="100" cy="100" r="80" fill="transparent" stroke="currentColor" className="text-gray-100 dark:text-gray-800" strokeWidth="16" />
+            <svg width="200" height="200" viewBox="0 0 200 200" className="transform -rotate-90 drop-shadow-md">
+              <circle cx="100" cy="100" r="80" fill="transparent" stroke="currentColor" className="text-gray-100 dark:text-gray-800" strokeWidth="18" />
               {(() => {
                 let currentOffset = 0; const circumference = 2 * Math.PI * 80;
                 return analyticsData.map((data, i) => {
@@ -574,7 +604,7 @@
                   const activeLength = Math.max(0, segmentLength - gap);
                   const offsetToApply = currentOffset; currentOffset += segmentLength;
                   return (
-                    <circle key={i} cx="100" cy="100" r="80" fill="transparent" stroke={COLOR_MAP[data.bg] || '#10b981'} strokeWidth="16" strokeDasharray={`${activeLength} ${circumference}`} strokeDashoffset={0} strokeLinecap="round" transform={`rotate(${(offsetToApply / circumference) * 360} 100 100)`} className="transition-all duration-1000 ease-out animate-in fade-in" style={{ animationDelay: `${i * 0.1}s` }} />
+                    <circle key={i} cx="100" cy="100" r="80" fill="transparent" stroke={COLOR_MAP[data.bg] || '#10b981'} strokeWidth="18" strokeDasharray={`${activeLength} ${circumference}`} strokeDashoffset={0} strokeLinecap="round" transform={`rotate(${(offsetToApply / circumference) * 360} 100 100)`} className="transition-all duration-1000 ease-out animate-in fade-in" style={{ animationDelay: `${i * 0.1}s` }} />
                   );
                 });
               })()}
@@ -587,9 +617,7 @@
                 const Icon = data.icon;
                 return (
                   <div key={i} className="flex items-center gap-4 p-4">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white flex-shrink-0 ${data.bg}`}>
-                      <Icon className="w-5 h-5" />
-                    </div>
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white flex-shrink-0 ${data.bg}`}><Icon className="w-5 h-5" /></div>
                     <div className="flex-1 min-w-0">
                       <div className="flex justify-between items-end mb-1.5">
                         <span className="font-semibold text-gray-900 dark:text-gray-100 text-[15px] truncate">{data.name}</span>
@@ -614,97 +642,101 @@
       const budgetStats = useMemo(() => budgets.map(budget => {
         const spent = transactions.filter(t => t.categoryId === budget.categoryId && t.type === 'expense' && (t.walletId === budget.walletId || budget.walletId === 'all')).reduce((sum, t) => sum + t.amount, 0);
         const percentage = Math.min((spent / budget.limit) * 100, 100);
-        return { ...budget, spent, percentage, category: CATEGORIES[budget.categoryId], statusColor: percentage >= 100 ? 'bg-rose-500' : percentage > 80 ? 'bg-orange-500' : 'bg-emerald-500' };
+        const categoryData = CATEGORIES[budget.categoryId] || { name: 'Unknown', icon: HelpCircle, bg: 'bg-gray-500' };
+        return { ...budget, spent, percentage, category: categoryData, statusColor: percentage >= 100 ? 'bg-rose-500' : percentage > 80 ? 'bg-orange-500' : 'bg-emerald-500' };
       }), [transactions, budgets]);
 
       return (
         <div className="px-4 py-6 space-y-6 animate-in fade-in duration-300">
           <div className="flex bg-gray-200/50 dark:bg-[#1C1C1E] p-1 rounded-xl shadow-inner">
-            <button onClick={() => setMode('budgets')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${mode === 'budgets' ? 'bg-white dark:bg-[#2C2C2E] text-gray-900 dark:text-white shadow-sm' : 'text-gray-500'}`}>Budgets</button>
-            <button onClick={() => setMode('goals')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${mode === 'goals' ? 'bg-white dark:bg-[#2C2C2E] text-gray-900 dark:text-white shadow-sm' : 'text-gray-500'}`}>Savings Jars</button>
+            <button onClick={() => {vibrate(); setMode('budgets')}} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${mode === 'budgets' ? 'bg-white dark:bg-[#2C2C2E] text-gray-900 dark:text-white shadow-sm' : 'text-gray-500'}`}>Budgets</button>
+            <button onClick={() => {vibrate(); setMode('goals')}} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${mode === 'goals' ? 'bg-white dark:bg-[#2C2C2E] text-gray-900 dark:text-white shadow-sm' : 'text-gray-500'}`}>Savings Jars</button>
           </div>
 
           {mode === 'budgets' && (
             <div className="space-y-4 animate-in slide-in-from-right-4 duration-300">
-              <div className="flex justify-between items-center px-2 mb-2">
-                <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider">Monthly Budgets</h3>
-                <button onClick={onAddBudget} className="text-sm font-bold text-emerald-600 hover:text-emerald-700 flex items-center gap-1"><Plus className="w-4 h-4" /> Add</button>
-              </div>
               {budgetStats.length === 0 ? (
-                <div className="text-center py-10 text-gray-400"><Target className="w-12 h-12 mx-auto mb-3 opacity-50" /><p>No budgets set.</p></div>
-              ) : budgetStats.map((b, i) => (
-                <div key={i} className="bg-white dark:bg-[#1C1C1E] p-5 rounded-3xl shadow-sm border border-gray-100 dark:border-[#2C2C2E] relative overflow-hidden transition-colors">
-                  {b.percentage >= 100 && <div className="absolute top-0 left-0 w-full h-1.5 bg-rose-500"></div>}
-                  <div className="flex justify-between items-start mb-5">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-sm ${b.category.bg}`}><b.category.icon className="w-6 h-6" /></div>
-                      <div><h3 className="font-bold text-gray-900 dark:text-white text-[15px]">{b.category.name}</h3><p className="text-xs text-gray-400 font-medium mt-0.5">Monthly Limit</p></div>
+                <EmptyState icon={Target} color="bg-gradient-to-br from-indigo-400 to-purple-600" title="Control your spending" subtitle="Set monthly limits on categories so you never overspend again." actionLabel="Create Budget" onAction={onAddBudget} />
+              ) : (
+                <>
+                  <div className="flex justify-between items-center px-2 mb-2"><h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider">Monthly Budgets</h3><button onClick={onAddBudget} className="text-sm font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1 active:scale-95"><Plus className="w-4 h-4" /> Add</button></div>
+                  {budgetStats.map((b, i) => (
+                    <div key={i} className="bg-white dark:bg-[#1C1C1E] p-5 rounded-3xl shadow-sm border border-gray-100 dark:border-[#2C2C2E] relative overflow-hidden transition-colors">
+                      {b.percentage >= 100 && <div className="absolute top-0 left-0 w-full h-1.5 bg-rose-500"></div>}
+                      <div className="flex justify-between items-start mb-5">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-sm ${b.category.bg}`}><b.category.icon className="w-6 h-6" /></div>
+                          <div><h3 className="font-bold text-gray-900 dark:text-white text-[15px]">{b.category.name}</h3><p className="text-xs text-gray-400 font-medium mt-0.5">Monthly Limit</p></div>
+                        </div>
+                        <div className="text-right">
+                          <p className={`font-bold text-lg ${b.percentage >= 100 ? 'text-rose-500' : 'text-gray-900 dark:text-white'}`}>{formatCurrency(b.spent, currency)}</p>
+                          <p className="text-xs text-gray-400 font-medium mt-0.5">of {formatCurrency(b.limit, currency)}</p>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-[11px] font-bold px-1 uppercase tracking-wider">
+                          <span className="text-gray-400">{b.percentage.toFixed(0)}% Spent</span>
+                          <span className={b.percentage >= 100 ? 'text-rose-500' : 'text-emerald-500'}>{b.percentage >= 100 ? 'Over Limit' : `${formatCurrency(b.limit - b.spent, currency)} Left`}</span>
+                        </div>
+                        <div className="h-3 w-full bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden shadow-inner">
+                          <div className={`h-full rounded-full ${b.statusColor} transition-all duration-700 ease-out`} style={{ width: `${b.percentage}%` }}></div>
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <p className={`font-bold text-lg ${b.percentage >= 100 ? 'text-rose-500' : 'text-gray-900 dark:text-white'}`}>{formatCurrency(b.spent, currency)}</p>
-                      <p className="text-xs text-gray-400 font-medium mt-0.5">of {formatCurrency(b.limit, currency)}</p>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-[11px] font-bold px-1 uppercase tracking-wider">
-                      <span className="text-gray-400">{b.percentage.toFixed(0)}% Spent</span>
-                      <span className={b.percentage >= 100 ? 'text-rose-500' : 'text-emerald-500'}>{b.percentage >= 100 ? 'Over Limit' : `${formatCurrency(b.limit - b.spent, currency)} Left`}</span>
-                    </div>
-                    <div className="h-3 w-full bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden shadow-inner">
-                      <div className={`h-full rounded-full ${b.statusColor} transition-all duration-700 ease-out`} style={{ width: `${b.percentage}%` }}></div>
-                    </div>
-                  </div>
-                </div>
-              ))}
+                  ))}
+                </>
+              )}
             </div>
           )}
 
           {mode === 'goals' && (
             <div className="space-y-4 animate-in slide-in-from-left-4 duration-300">
-              <div className="flex justify-between items-center px-2 mb-2">
-                <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider">Savings Jars</h3>
-                <button onClick={onAddGoal} className="text-sm font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1"><Plus className="w-4 h-4" /> Create</button>
-              </div>
               {goals.length === 0 ? (
-                <div className="text-center py-10 text-gray-400"><Trophy className="w-12 h-12 mx-auto mb-3 opacity-50" /><p>Start saving for something big!</p></div>
-              ) : goals.map((g, i) => {
-                const percentage = Math.min((g.currentAmount / g.targetAmount) * 100, 100);
-                return (
-                  <div key={i} className="bg-white dark:bg-[#1C1C1E] p-5 rounded-3xl shadow-sm border border-gray-100 dark:border-[#2C2C2E] transition-colors group">
-                    <div className="flex justify-between items-start mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="text-3xl bg-gray-50 dark:bg-gray-800 w-12 h-12 rounded-2xl flex items-center justify-center">{g.icon}</div>
-                        <div><h3 className="font-bold text-gray-900 dark:text-white text-[15px]">{g.name}</h3></div>
-                      </div>
-                      <button onClick={() => onFundGoal(g)} className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 text-xs font-bold rounded-full hover:bg-indigo-100 transition-colors">Add Funds</button>
-                    </div>
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-[11px] font-bold px-1 uppercase tracking-wider">
-                        <span className="text-indigo-500">{formatCurrency(g.currentAmount, currency)}</span>
-                        <span className="text-gray-400">{formatCurrency(g.targetAmount, currency)}</span>
-                      </div>
-                      <div className="h-4 w-full bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden shadow-inner p-0.5">
-                        <div className={`h-full rounded-full bg-gradient-to-r ${g.color} transition-all duration-700 ease-out relative`} style={{ width: `${Math.max(percentage, 5)}%` }}>
-                          {percentage >= 100 && <div className="absolute inset-0 bg-white/20 animate-pulse"></div>}
+                <EmptyState icon={Trophy} color="bg-gradient-to-br from-yellow-400 to-orange-500" title="Dream Big!" subtitle="Set up a savings jar for that new laptop, vacation, or emergency fund." actionLabel="Create Jar" onAction={onAddGoal} />
+              ) : (
+                <>
+                  <div className="flex justify-between items-center px-2 mb-2"><h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider">Savings Jars</h3><button onClick={onAddGoal} className="text-sm font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1 active:scale-95"><Plus className="w-4 h-4" /> Create</button></div>
+                  {goals.map((g, i) => {
+                    const percentage = Math.min((g.currentAmount / g.targetAmount) * 100, 100);
+                    return (
+                      <div key={i} className="bg-white dark:bg-[#1C1C1E] p-5 rounded-3xl shadow-sm border border-gray-100 dark:border-[#2C2C2E] transition-colors group">
+                        <div className="flex justify-between items-start mb-4">
+                          <div className="flex items-center gap-3">
+                            <div className="text-3xl bg-gray-50 dark:bg-gray-800 w-12 h-12 rounded-2xl flex items-center justify-center">{g.icon}</div>
+                            <div><h3 className="font-bold text-gray-900 dark:text-white text-[15px]">{g.name}</h3></div>
+                          </div>
+                          <button onClick={() => onFundGoal(g)} className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 text-xs font-bold rounded-full hover:bg-indigo-100 transition-colors active:scale-95">Add Funds</button>
+                        </div>
+                        <div className="space-y-2">
+                          <div className="flex justify-between text-[11px] font-bold px-1 uppercase tracking-wider">
+                            <span className="text-indigo-500">{formatCurrency(g.currentAmount, currency)}</span>
+                            <span className="text-gray-400">{formatCurrency(g.targetAmount, currency)}</span>
+                          </div>
+                          <div className="h-4 w-full bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden shadow-inner p-0.5">
+                            <div className={`h-full rounded-full bg-gradient-to-r ${g.color} transition-all duration-700 ease-out relative`} style={{ width: `${Math.max(percentage, 5)}%` }}>
+                              {percentage >= 100 && <div className="absolute inset-0 bg-white/20 animate-pulse"></div>}
+                            </div>
+                          </div>
+                          {percentage >= 100 && <p className="text-xs text-center text-emerald-500 font-bold pt-2 animate-bounce">Goal Reached! 🎉</p>}
                         </div>
                       </div>
-                      {percentage >= 100 && <p className="text-xs text-center text-emerald-500 font-bold pt-2 animate-bounce">Goal Reached! 🎉</p>}
-                    </div>
-                  </div>
-                );
-              })}
+                    );
+                  })}
+                </>
+              )}
             </div>
           )}
         </div>
       );
     }
 
-    function SettingsView({ user, wallets, prefs, setPref, onAddWallet, onLogout }) {
+    function SettingsView({ user, wallets, prefs, setPref, onAddWallet, onDeleteWallet, onLogout, onEnableSecurity }) {
       const [activeModal, setActiveModal] = useState(null); 
+      const [walletToDelete, setWalletToDelete] = useState(null);
 
       const SectionTitle = ({ children }) => <h3 className="text-[12px] font-bold text-gray-400 uppercase tracking-widest px-4 mb-2 mt-8 first:mt-0">{children}</h3>;
       const Row = ({ icon: Icon, color, label, value, onClick }) => (
-        <div onClick={onClick} className="flex items-center justify-between p-4 hover:bg-gray-50 dark:hover:bg-[#2C2C2E] cursor-pointer group transition-colors">
+        <div onClick={() => {vibrate(); onClick();}} className="flex items-center justify-between p-4 hover:bg-gray-50 dark:hover:bg-[#2C2C2E] cursor-pointer group transition-colors">
           <div className="flex items-center gap-4">
             <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-white ${color} shadow-sm group-hover:scale-105 transition-transform`}><Icon className="w-4 h-4" /></div>
             <p className="font-bold text-gray-900 dark:text-white text-[15px]">{label}</p>
@@ -731,12 +763,16 @@
             {wallets.map((w, i) => {
               const WIcon = ICON_MAP[w.iconString] || Wallet;
               return (
-                <div key={i} className="flex items-center justify-between p-4 hover:bg-gray-50 dark:hover:bg-[#2C2C2E] cursor-pointer group transition-colors">
+                <div key={w.id} className="flex items-center justify-between p-4 hover:bg-gray-50 dark:hover:bg-[#2C2C2E] transition-colors group">
                   <div className="flex items-center gap-4">
                     <div className="w-10 h-10 rounded-[14px] bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-600 dark:text-gray-300 group-hover:scale-105 transition-transform"><WIcon className="w-5 h-5" /></div>
                     <div><p className="font-bold text-gray-900 dark:text-white text-[15px]">{w.name}</p><p className="text-[13px] text-gray-400 font-medium">{w.currency}</p></div>
                   </div>
-                  <ChevronRightIcon className="w-5 h-5 text-gray-300" />
+                  {wallets.length > 1 && (
+                    <button onClick={() => {vibrate(); setWalletToDelete(w.id);}} className="p-2 text-gray-300 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-full transition-colors active:scale-90">
+                      <Trash2 className="w-5 h-5" />
+                    </button>
+                  )}
                 </div>
               )
             })}
@@ -749,17 +785,15 @@
           <SectionTitle>Preferences</SectionTitle>
           <div className="bg-white dark:bg-[#1C1C1E] rounded-3xl shadow-sm border border-gray-100 dark:border-[#2C2C2E] overflow-hidden divide-y divide-gray-50 dark:divide-[#2C2C2E]">
             <Row icon={Globe} color="bg-orange-500" label="Currencies" value={prefs.baseCurrency} onClick={() => setActiveModal('Currencies')} />
-            
-            <div className="flex items-center justify-between p-4 hover:bg-gray-50 dark:hover:bg-[#2C2C2E] transition-colors">
+            <div className="flex items-center justify-between p-4 hover:bg-gray-50 dark:hover:bg-[#2C2C2E] transition-colors cursor-pointer" onClick={() => {vibrate(); setPref('isDarkMode', !prefs.isDarkMode)}}>
                <div className="flex items-center gap-4">
                  <div className="w-8 h-8 rounded-xl flex items-center justify-center text-white bg-indigo-500 shadow-sm"><Home className="w-4 h-4" /></div>
                  <p className="font-bold text-gray-900 dark:text-white text-[15px]">Dark Mode</p>
                </div>
-               <button onClick={() => setPref('isDarkMode', !prefs.isDarkMode)} className={`w-[52px] h-7 rounded-full transition-colors relative ${prefs.isDarkMode ? 'bg-indigo-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
+               <button className={`w-[52px] h-7 rounded-full transition-colors relative pointer-events-none ${prefs.isDarkMode ? 'bg-indigo-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
                  <div className={`absolute top-1 left-1 bg-white w-5 h-5 rounded-full transition-transform duration-300 shadow-sm ${prefs.isDarkMode ? 'translate-x-6' : ''}`} />
                </button>
             </div>
-            
             <Row icon={Shield} color="bg-emerald-500" label="Security" onClick={() => setActiveModal('Security')} />
             <Row icon={Bell} color="bg-rose-500" label="Notifications" onClick={() => setActiveModal('Notifications')} />
           </div>
@@ -776,8 +810,18 @@
             </button>
           </div>
 
+          {/* Delete Wallet Confirmation */}
+          <ConfirmDialog 
+            isOpen={!!walletToDelete} 
+            onClose={() => setWalletToDelete(null)} 
+            onConfirm={() => onDeleteWallet(walletToDelete)} 
+            title="Delete Wallet?" 
+            message="This action cannot be undone. All data connected to this wallet may be lost." 
+            isDestructive={true} 
+          />
+
           {activeModal && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setActiveModal(null)}>
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in" onClick={() => setActiveModal(null)}>
               <div className="bg-white dark:bg-[#1C1C1E] rounded-[2rem] w-full max-w-sm shadow-2xl overflow-hidden flex flex-col transition-colors" onClick={e => e.stopPropagation()}>
                 <div className="px-6 py-5 border-b border-gray-100 dark:border-[#2C2C2E] flex justify-between items-center bg-gray-50/50 dark:bg-black/20">
                   <h3 className="font-bold text-lg text-gray-900 dark:text-white">{activeModal}</h3>
@@ -787,7 +831,7 @@
                   {activeModal === 'Currencies' && (
                     <div className="space-y-2">
                       {['USD', 'EUR', 'GBP', 'JPY', 'INR'].map(c => (
-                        <button key={c} onClick={() => { setPref('baseCurrency', c); setActiveModal(null); }} className={`w-full flex items-center justify-between p-4 rounded-2xl border transition-colors ${prefs.baseCurrency === c ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400' : 'border-gray-100 dark:border-[#2C2C2E] hover:bg-gray-50 dark:hover:bg-[#2C2C2E]'}`}>
+                        <button key={c} onClick={() => { vibrate(); setPref('baseCurrency', c); setActiveModal(null); }} className={`w-full flex items-center justify-between p-4 rounded-2xl border transition-colors ${prefs.baseCurrency === c ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400' : 'border-gray-100 dark:border-[#2C2C2E] hover:bg-gray-50 dark:hover:bg-[#2C2C2E]'}`}>
                           <span className="font-semibold">{c}</span>
                           {prefs.baseCurrency === c && <div className="w-3 h-3 bg-emerald-500 rounded-full shadow-[0_0_8px_rgba(16,185,129,0.5)]" />}
                         </button>
@@ -795,17 +839,17 @@
                     </div>
                   )}
                   {activeModal === 'Security' && (
-                    <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-[#2C2C2E] rounded-2xl border border-gray-100 dark:border-gray-700">
-                      <div><p className="font-bold text-[15px]">Use Face ID</p><p className="text-xs text-gray-500 font-medium mt-0.5">Quick biometric login</p></div>
-                      <button onClick={() => setPref('faceId', !prefs.faceId)} className={`w-[52px] h-7 rounded-full transition-colors relative ${prefs.faceId ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
+                    <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-[#2C2C2E] rounded-2xl border border-gray-100 dark:border-gray-700 cursor-pointer" onClick={() => {vibrate(); if(prefs.faceId) { setPref('faceId', false); setPref('securityPin', null); } else { setActiveModal(null); onEnableSecurity(); }}}>
+                      <div><p className="font-bold text-[15px]">App Lock (PIN / Face ID)</p><p className="text-xs text-gray-500 font-medium mt-0.5">Secure your app</p></div>
+                      <button className={`w-[52px] h-7 rounded-full transition-colors relative pointer-events-none ${prefs.faceId ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
                         <div className={`absolute top-1 left-1 bg-white w-5 h-5 rounded-full transition-transform duration-300 shadow-sm ${prefs.faceId ? 'translate-x-6' : ''}`} />
                       </button>
                     </div>
                   )}
                   {activeModal === 'Notifications' && (
-                    <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-[#2C2C2E] rounded-2xl border border-gray-100 dark:border-gray-700">
+                    <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-[#2C2C2E] rounded-2xl border border-gray-100 dark:border-gray-700 cursor-pointer" onClick={() => {vibrate(); setPref('budgetAlerts', !prefs.budgetAlerts)}}>
                       <div><p className="font-bold text-[15px]">Budget Alerts</p><p className="text-xs text-gray-500 font-medium mt-0.5">When nearing spending limits</p></div>
-                      <button onClick={() => setPref('budgetAlerts', !prefs.budgetAlerts)} className={`w-[52px] h-7 rounded-full transition-colors relative ${prefs.budgetAlerts ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
+                      <button className={`w-[52px] h-7 rounded-full transition-colors relative pointer-events-none ${prefs.budgetAlerts ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
                         <div className={`absolute top-1 left-1 bg-white w-5 h-5 rounded-full transition-transform duration-300 shadow-sm ${prefs.budgetAlerts ? 'translate-x-6' : ''}`} />
                       </button>
                     </div>
@@ -814,7 +858,7 @@
                     <div className="space-y-4 text-center py-4"><HelpCircle className="w-12 h-12 text-blue-500 mx-auto opacity-50" /><p className="font-bold text-gray-900 dark:text-white">How can we help?</p><p className="text-sm text-gray-500">Reach out at <span className="text-blue-500">support@cashly.app</span></p></div>
                   )}
                   {activeModal === 'About Cashly' && (
-                    <div className="space-y-4 text-center py-4"><div className="w-16 h-16 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-2xl mx-auto flex items-center justify-center shadow-lg"><Wallet className="w-8 h-8 text-white" /></div><p className="font-bold text-lg">Cashly</p><p className="text-sm text-gray-500">Version 2.0.0<br/>Your wealth, simplified.</p></div>
+                    <div className="space-y-4 text-center py-4"><CashlyLogo className="w-20 h-20 mx-auto drop-shadow-lg" /><p className="font-bold text-lg">Cashly</p><p className="text-sm text-gray-500">Version 3.0.0<br/>Your wealth, simplified.</p></div>
                   )}
                 </div>
               </div>
@@ -824,8 +868,103 @@
       );
     }
 
-    // --- MODALS & UTILITIES ---
+    // --- SECURITY & LOCK SCREENS ---
+    function LockScreen({ pin, onUnlock }) {
+      const [input, setInput] = useState('');
+      const [error, setError] = useState(false);
 
+      useEffect(() => {
+        if (input.length === 4) {
+          if (input === pin) { setInput(''); onUnlock(); }
+          else { vibrate(); setError(true); setTimeout(() => { setInput(''); setError(false); }, 500); }
+        }
+      }, [input, pin, onUnlock]);
+
+      const handleBiometric = async () => {
+         try {
+            if (window.PublicKeyCredential) {
+              const challenge = new Uint8Array(32); window.crypto.getRandomValues(challenge);
+              await navigator.credentials.create({
+                publicKey: {
+                  challenge,
+                  rp: { name: "Cashly Finance" },
+                  user: { id: new Uint8Array(16), name: "user", displayName: "User" },
+                  pubKeyCredParams: [{ type: "public-key", alg: -7 }],
+                  authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "required" },
+                  timeout: 60000
+                }
+              });
+              onUnlock();
+            }
+         } catch(e) { console.log("Biometric failed, use PIN", e); }
+      };
+
+      useEffect(() => { handleBiometric(); }, []); // Auto-trigger on load
+
+      return (
+         <div className="w-full h-full bg-[#F2F2F7] dark:bg-black flex flex-col items-center justify-center p-6 relative animate-in fade-in z-50">
+            <div className="absolute top-20 flex flex-col items-center"><CashlyLogo className="w-20 h-20 shadow-lg mb-6" /><h2 className="text-xl font-bold text-center text-gray-900 dark:text-white">Enter PIN</h2></div>
+            <div className="flex gap-4 mb-16 mt-20">
+               {[0,1,2,3].map(i => <div key={i} className={`w-4 h-4 rounded-full transition-colors ${input.length > i ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-700'} ${error ? 'bg-rose-500' : ''}`} style={error ? {animation: 'springUp 0.3s'} : {}} />)}
+            </div>
+            <div className="grid grid-cols-3 gap-6 w-full max-w-[280px]">
+               {[1,2,3,4,5,6,7,8,9].map(num => (
+                 <button key={num} onClick={() => {vibrate(); setInput(p => p.length < 4 ? p + num : p)}} className="w-20 h-20 rounded-full bg-white dark:bg-[#1C1C1E] text-3xl font-medium text-gray-900 dark:text-white shadow-sm active:bg-gray-200 dark:active:bg-gray-800 transition-colors flex items-center justify-center">{num}</button>
+               ))}
+               <button onClick={() => {vibrate(); handleBiometric();}} className="w-20 h-20 flex items-center justify-center text-emerald-500 active:scale-90 transition-transform"><Shield className="w-8 h-8" /></button>
+               <button onClick={() => {vibrate(); setInput(p => p.length < 4 ? p + '0' : p)}} className="w-20 h-20 rounded-full bg-white dark:bg-[#1C1C1E] text-3xl font-medium text-gray-900 dark:text-white shadow-sm active:bg-gray-200 dark:active:bg-gray-800 transition-colors flex items-center justify-center">0</button>
+               <button onClick={() => {vibrate(); setInput(p => p.slice(0, -1))}} className="w-20 h-20 flex items-center justify-center text-gray-500 dark:text-gray-400 active:scale-90 transition-transform"><ArrowLeft className="w-8 h-8" /></button>
+            </div>
+         </div>
+      );
+    }
+
+    function PinSetupModal({ isOpen, onClose, onSave }) {
+      const [step, setStep] = useState(1);
+      const [pin1, setPin1] = useState('');
+      const [pin2, setPin2] = useState('');
+      const [error, setError] = useState(false);
+      
+      const currentPin = step === 1 ? pin1 : pin2;
+      const setPin = step === 1 ? setPin1 : setPin2;
+
+      useEffect(() => {
+         if (currentPin.length === 4) {
+           setTimeout(() => {
+             if (step === 1) { setStep(2); vibrate(); }
+             else {
+                if (pin1 === pin2) onSave(pin1);
+                else { vibrate(); setError(true); setTimeout(() => { setPin1(''); setPin2(''); setStep(1); setError(false); }, 800); }
+             }
+           }, 200);
+         }
+      }, [currentPin, step, pin1, pin2, onSave]);
+
+      if (!isOpen) return null;
+
+      return (
+        <div className="absolute inset-0 z-50 flex flex-col justify-end pointer-events-none">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-auto transition-opacity" onClick={onClose} />
+          <div className="bg-[#F2F2F7] dark:bg-black w-full rounded-t-[2.5rem] p-6 pb-safe pointer-events-auto spring-up flex flex-col items-center">
+             <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2 pt-2">{step === 1 ? 'Create App PIN' : 'Confirm PIN'}</h2>
+             <p className="text-sm text-center text-gray-500 dark:text-gray-400 mb-8 h-5">{error ? <span className="text-rose-500 font-bold">PINs did not match. Try again.</span> : 'This will be used if Face ID fails or is unavailable.'}</p>
+             <div className="flex gap-4 mb-10">
+                {[0,1,2,3].map(i => <div key={i} className={`w-4 h-4 rounded-full transition-colors ${currentPin.length > i ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-700'} ${error ? 'bg-rose-500' : ''}`} />)}
+             </div>
+             <div className="grid grid-cols-3 gap-6 w-full max-w-[280px] mb-4">
+               {[1,2,3,4,5,6,7,8,9].map(num => (
+                 <button key={num} onClick={() => {vibrate(); setPin(p => p.length < 4 ? p + num : p)}} className="w-20 h-20 rounded-full bg-white dark:bg-[#1C1C1E] text-2xl font-bold text-gray-900 dark:text-white shadow-sm active:bg-gray-100 dark:active:bg-gray-800 transition-colors flex items-center justify-center">{num}</button>
+               ))}
+               <div />
+               <button onClick={() => {vibrate(); setPin(p => p.length < 4 ? p + '0' : p)}} className="w-20 h-20 rounded-full bg-white dark:bg-[#1C1C1E] text-2xl font-bold text-gray-900 dark:text-white shadow-sm active:bg-gray-100 dark:active:bg-gray-800 transition-colors flex items-center justify-center">0</button>
+               <button onClick={() => {vibrate(); setPin(p => p.slice(0, -1))}} className="w-20 h-20 flex items-center justify-center text-gray-500 dark:text-gray-400 active:scale-90 transition-transform"><ArrowLeft className="w-8 h-8" /></button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // --- MODALS ---
     function NavItem({ icon: Icon, label, active, onClick }) {
       return (
         <button onClick={onClick} className={`flex flex-col items-center justify-center gap-1 min-w-[4rem] transition-colors relative z-10 ${active ? 'text-emerald-500' : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'}`}>
@@ -837,35 +976,20 @@
     }
 
     function AddTransactionModal({ isOpen, onClose, onSave, wallets, initialWalletId }) {
-      const [type, setType] = useState('expense');
-      const [amount, setAmount] = useState('');
-      const [selectedCategory, setSelectedCategory] = useState(null);
-      const [note, setNote] = useState('');
-      const [selectedWalletId, setSelectedWalletId] = useState(initialWalletId);
-      const [fromWalletId, setFromWalletId] = useState('');
-      const [toWalletId, setToWalletId] = useState('');
-
-      useEffect(() => { 
-        if(isOpen) {
-          setSelectedWalletId(initialWalletId);
-          setFromWalletId(wallets[0]?.id || '');
-          setToWalletId(wallets[1]?.id || wallets[0]?.id || '');
-        }
-      }, [isOpen, initialWalletId, wallets]);
-
+      const [type, setType] = useState('expense'); const [amount, setAmount] = useState(''); const [selectedCategory, setSelectedCategory] = useState(null); const [note, setNote] = useState(''); const [selectedWalletId, setSelectedWalletId] = useState(initialWalletId); const [fromWalletId, setFromWalletId] = useState(''); const [toWalletId, setToWalletId] = useState('');
+      useEffect(() => { if(isOpen) { setSelectedWalletId(initialWalletId); setFromWalletId(wallets[0]?.id || ''); setToWalletId(wallets[1]?.id || wallets[0]?.id || ''); } }, [isOpen, initialWalletId, wallets]);
       if (!isOpen) return null;
-
       return (
         <div className="absolute inset-0 z-50 flex flex-col justify-end pointer-events-none">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-auto transition-opacity duration-300" onClick={onClose} />
-          <div className="bg-[#F2F2F7] dark:bg-black w-full h-[90%] rounded-t-[2.5rem] shadow-[0_-10px_40px_rgba(0,0,0,0.2)] pointer-events-auto flex flex-col relative animate-in slide-in-from-bottom-full duration-500 ease-out transition-colors">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-auto transition-opacity" onClick={onClose} />
+          <div className="bg-[#F2F2F7] dark:bg-black w-full h-[90%] rounded-t-[2.5rem] shadow-[0_-10px_40px_rgba(0,0,0,0.2)] pointer-events-auto flex flex-col relative spring-up transition-colors">
             <div className="w-full flex justify-center pt-4 pb-2 absolute top-0 z-20"><div className="w-12 h-1.5 bg-gray-300 dark:bg-gray-700 rounded-full" /></div>
             <div className="px-6 pt-10 pb-4 bg-white dark:bg-[#1C1C1E] rounded-t-[2.5rem] shadow-sm z-10">
               <div className="flex bg-gray-100 dark:bg-[#2C2C2E] rounded-xl p-1 shadow-inner relative">
                 <div className={`absolute top-1 bottom-1 w-[31%] bg-white dark:bg-[#1C1C1E] rounded-lg shadow-sm transition-transform duration-300 ease-out ${type === 'expense' ? 'translate-x-[2%]' : type === 'income' ? 'translate-x-[108%]' : 'translate-x-[214%]'}`}></div>
-                <button onClick={() => setType('expense')} className={`flex-1 py-2 text-[13px] font-bold z-10 transition-colors ${type === 'expense' ? 'text-gray-900 dark:text-white' : 'text-gray-500'}`}>Expense</button>
-                <button onClick={() => setType('income')} className={`flex-1 py-2 text-[13px] font-bold z-10 transition-colors ${type === 'income' ? 'text-gray-900 dark:text-white' : 'text-gray-500'}`}>Income</button>
-                <button onClick={() => setType('transfer')} className={`flex-1 py-2 text-[13px] font-bold z-10 transition-colors ${type === 'transfer' ? 'text-gray-900 dark:text-white' : 'text-gray-500'}`}>Transfer</button>
+                <button onClick={() => {vibrate(); setType('expense')}} className={`flex-1 py-2 text-[13px] font-bold z-10 transition-colors ${type === 'expense' ? 'text-gray-900 dark:text-white' : 'text-gray-500'}`}>Expense</button>
+                <button onClick={() => {vibrate(); setType('income')}} className={`flex-1 py-2 text-[13px] font-bold z-10 transition-colors ${type === 'income' ? 'text-gray-900 dark:text-white' : 'text-gray-500'}`}>Income</button>
+                <button onClick={() => {vibrate(); setType('transfer')}} className={`flex-1 py-2 text-[13px] font-bold z-10 transition-colors ${type === 'transfer' ? 'text-gray-900 dark:text-white' : 'text-gray-500'}`}>Transfer</button>
               </div>
             </div>
             <div className="flex-1 overflow-y-auto">
@@ -884,7 +1008,7 @@
                       {wallets.map(w => {
                         const WIcon = ICON_MAP[w.iconString] || Wallet;
                         return (
-                          <button key={w.id} onClick={() => setSelectedWalletId(w.id)} className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-xl border transition-all ${selectedWalletId === w.id ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : 'border-gray-100 dark:border-[#3C3C3E] bg-gray-50 dark:bg-[#2C2C2E] text-gray-600 dark:text-gray-300'}`}>
+                          <button key={w.id} onClick={() => {vibrate(); setSelectedWalletId(w.id)}} className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-xl border transition-all active:scale-95 ${selectedWalletId === w.id ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : 'border-gray-100 dark:border-[#3C3C3E] bg-gray-50 dark:bg-[#2C2C2E] text-gray-600 dark:text-gray-300'}`}>
                             <WIcon className="w-4 h-4" /><span className="text-sm font-semibold">{w.name}</span>
                           </button>
                         )
@@ -893,19 +1017,9 @@
                   </div>
                 ) : (
                   <div className="bg-white dark:bg-[#1C1C1E] p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-[#2C2C2E] flex items-center justify-between gap-2">
-                    <div className="flex-1">
-                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2 block">From</label>
-                      <select value={fromWalletId} onChange={e => setFromWalletId(e.target.value)} className="w-full bg-gray-50 dark:bg-[#2C2C2E] border border-gray-100 dark:border-gray-700 rounded-xl px-3 py-2 text-sm font-semibold text-gray-800 dark:text-gray-200 outline-none focus:border-emerald-500">
-                        {wallets.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-                      </select>
-                    </div>
+                    <div className="flex-1"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2 block">From</label><select value={fromWalletId} onChange={e => setFromWalletId(e.target.value)} className="w-full bg-gray-50 dark:bg-[#2C2C2E] border border-gray-100 dark:border-gray-700 rounded-xl px-3 py-2 text-sm font-semibold text-gray-800 dark:text-gray-200 outline-none">{wallets.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</select></div>
                     <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-[#2C2C2E] flex items-center justify-center text-gray-400 mt-5 shadow-inner"><ArrowRightLeft className="w-4 h-4" /></div>
-                    <div className="flex-1">
-                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2 block">To</label>
-                      <select value={toWalletId} onChange={e => setToWalletId(e.target.value)} className="w-full bg-gray-50 dark:bg-[#2C2C2E] border border-gray-100 dark:border-gray-700 rounded-xl px-3 py-2 text-sm font-semibold text-gray-800 dark:text-gray-200 outline-none focus:border-emerald-500">
-                        {wallets.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-                      </select>
-                    </div>
+                    <div className="flex-1"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2 block">To</label><select value={toWalletId} onChange={e => setToWalletId(e.target.value)} className="w-full bg-gray-50 dark:bg-[#2C2C2E] border border-gray-100 dark:border-gray-700 rounded-xl px-3 py-2 text-sm font-semibold text-gray-800 dark:text-gray-200 outline-none">{wallets.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</select></div>
                   </div>
                 )}
                 {type !== 'transfer' && (
@@ -913,10 +1027,8 @@
                     <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-4 block">Category</label>
                     <div className="grid grid-cols-4 gap-y-6 gap-x-2">
                       {Object.values(CATEGORIES).filter(c => c.type === type).map((cat) => (
-                        <button key={cat.id} onClick={() => setSelectedCategory(cat.id)} className="flex flex-col items-center gap-2 group outline-none">
-                          <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-300 ${selectedCategory === cat.id ? cat.bg + ' text-white ring-4 ring-offset-1 dark:ring-offset-[#1C1C1E] ring-' + cat.bg.replace('bg-', '') + ' scale-110 shadow-lg' : 'bg-gray-50 dark:bg-[#2C2C2E] text-gray-500 dark:text-gray-400 border border-gray-100 dark:border-[#3C3C3E]'}`}>
-                            <cat.icon className="w-6 h-6" />
-                          </div>
+                        <button key={cat.id} onClick={() => {vibrate(); setSelectedCategory(cat.id)}} className="flex flex-col items-center gap-2 group outline-none active:scale-95 transition-transform">
+                          <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-300 ${selectedCategory === cat.id ? cat.bg + ' text-white ring-4 ring-offset-1 dark:ring-offset-[#1C1C1E] ring-' + cat.bg.replace('bg-', '') + ' scale-110 shadow-lg' : 'bg-gray-50 dark:bg-[#2C2C2E] text-gray-500 dark:text-gray-400 border border-gray-100 dark:border-[#3C3C3E]'}`}><cat.icon className="w-6 h-6" /></div>
                           <span className={`text-[10px] font-bold text-center transition-colors ${selectedCategory === cat.id ? 'text-gray-900 dark:text-white' : 'text-gray-500'}`}>{cat.name}</span>
                         </button>
                       ))}
@@ -930,10 +1042,86 @@
               </div>
             </div>
             <div className="p-6 bg-white/80 dark:bg-[#1C1C1E]/80 backdrop-blur-md border-t border-gray-100 dark:border-[#2C2C2E] pb-safe">
-              <button onClick={() => { onSave({ amount: parseFloat(amount), categoryId: selectedCategory, walletId: selectedWalletId, fromWalletId, toWalletId, note, date: new Date().toISOString(), type }); setAmount(''); setSelectedCategory(null); setNote(''); onClose(); }} disabled={!amount || (type !== 'transfer' && !selectedCategory) || (type === 'transfer' && fromWalletId === toWalletId)} className="w-full py-4 rounded-2xl font-bold text-[15px] text-white bg-gray-900 dark:bg-white dark:text-gray-900 hover:bg-gray-800 disabled:opacity-30 shadow-lg active:scale-[0.98] transition-transform">
+              <button onClick={() => { vibrate(); onSave({ amount: parseFloat(amount), categoryId: selectedCategory, walletId: selectedWalletId, fromWalletId, toWalletId, note, date: new Date().toISOString(), type }); setAmount(''); setSelectedCategory(null); setNote(''); onClose(); }} disabled={!amount || (type !== 'transfer' && !selectedCategory) || (type === 'transfer' && fromWalletId === toWalletId)} className="w-full py-4 rounded-2xl font-bold text-[15px] text-white bg-gray-900 dark:bg-white dark:text-gray-900 hover:bg-gray-800 disabled:opacity-30 shadow-lg active:scale-[0.98] transition-transform">
                 Save {type === 'transfer' ? 'Transfer' : 'Transaction'}
               </button>
             </div>
+          </div>
+        </div>
+      );
+    }
+
+    function AddWalletModal({ isOpen, onClose, onSave }) {
+      const [name, setName] = useState(''); const [currency, setCurrency] = useState('USD');
+      if (!isOpen) return null;
+      return (
+        <div className="absolute inset-0 z-50 flex flex-col justify-end pointer-events-none">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-auto transition-opacity" onClick={onClose} />
+          <div className="bg-[#F2F2F7] dark:bg-black w-full rounded-t-[2.5rem] p-6 pb-safe pointer-events-auto spring-up">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-6 text-center">Add New Wallet</h2>
+            <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Wallet Name" className="w-full bg-white dark:bg-[#1C1C1E] text-gray-900 dark:text-white rounded-xl px-4 py-4 font-bold border border-gray-100 dark:border-[#2C2C2E] outline-none mb-4" />
+            <select value={currency} onChange={e => setCurrency(e.target.value)} className="w-full bg-white dark:bg-[#1C1C1E] text-gray-900 dark:text-white rounded-xl px-4 py-4 font-bold border border-gray-100 dark:border-[#2C2C2E] outline-none mb-6">
+              <option value="USD">USD ($)</option><option value="EUR">EUR (€)</option><option value="GBP">GBP (£)</option>
+            </select>
+            <button onClick={() => { vibrate(); onSave({ name, currency, iconString: 'Wallet' }); setName(''); onClose(); }} disabled={!name} className="w-full py-4 rounded-2xl font-bold text-white bg-emerald-500 active:scale-[0.98] transition-transform disabled:opacity-50">Create</button>
+          </div>
+        </div>
+      );
+    }
+
+    function AddBudgetModal({ isOpen, onClose, onSave, wallets, activeWalletId }) {
+      const [amount, setAmount] = useState(''); const [categoryId, setCategoryId] = useState('food'); const [walletId, setWalletId] = useState(activeWalletId === 'all' ? wallets[0]?.id : activeWalletId);
+      if (!isOpen) return null;
+      return (
+        <div className="absolute inset-0 z-50 flex flex-col justify-end pointer-events-none">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-auto transition-opacity" onClick={onClose} />
+          <div className="bg-[#F2F2F7] dark:bg-black w-full rounded-t-[2.5rem] p-6 pb-safe pointer-events-auto spring-up max-h-[90%] overflow-y-auto">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-6 text-center">Set Budget</h2>
+            <input type="text" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value.replace(/[^0-9.]/g, ''))} placeholder="Amount" className="w-full bg-white dark:bg-[#1C1C1E] text-gray-900 dark:text-white rounded-xl px-4 py-4 font-bold border border-gray-100 dark:border-[#2C2C2E] outline-none mb-4" />
+            <div className="grid grid-cols-4 gap-2 mb-4 bg-white dark:bg-[#1C1C1E] p-4 rounded-2xl border border-gray-100 dark:border-[#2C2C2E]">
+              {Object.values(CATEGORIES).filter(c => c.type === 'expense').map(cat => (
+                <button key={cat.id} onClick={() => {vibrate(); setCategoryId(cat.id)}} className={`flex flex-col items-center justify-center p-2 rounded-xl transition-all active:scale-95 ${categoryId === cat.id ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 border-2 border-emerald-500' : 'text-gray-500 dark:text-gray-400 border-2 border-transparent hover:bg-gray-50 dark:hover:bg-[#2C2C2E]'}`}>
+                  <cat.icon className="w-5 h-5 mb-1" /><span className="text-[9px] font-bold truncate w-full">{cat.name}</span>
+                </button>
+              ))}
+            </div>
+            <button onClick={() => { vibrate(); onSave({ categoryId, limit: parseFloat(amount), walletId }); setAmount(''); onClose(); }} disabled={!amount} className="w-full py-4 rounded-2xl font-bold text-white bg-emerald-500 active:scale-[0.98] transition-transform disabled:opacity-50">Save</button>
+          </div>
+        </div>
+      );
+    }
+    
+    // AddGoalModal, FundGoalModal, NotificationsModal, AddBillModal follow same spring-up structure
+    function AddGoalModal({ isOpen, onClose, onSave }) {
+      const [name, setName] = useState(''); const [target, setTarget] = useState(''); const [icon, setIcon] = useState('🏖️'); const [color, setColor] = useState('from-blue-400 to-blue-600');
+      if (!isOpen) return null;
+      return (
+        <div className="absolute inset-0 z-50 flex flex-col justify-end pointer-events-none">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-auto transition-opacity" onClick={onClose} />
+          <div className="bg-[#F2F2F7] dark:bg-black w-full rounded-t-[2.5rem] shadow-2xl pointer-events-auto flex flex-col p-6 pb-safe spring-up">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-6 text-center pt-2">New Savings Jar</h2>
+            <div className="space-y-4">
+              <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="What are you saving for?" className="w-full bg-white dark:bg-[#1C1C1E] text-gray-900 dark:text-white rounded-xl px-4 py-4 font-bold border border-gray-100 dark:border-[#2C2C2E] outline-none" />
+              <input type="text" inputMode="decimal" value={target} onChange={e => setTarget(e.target.value.replace(/[^0-9.]/g, ''))} placeholder="Target Amount" className="w-full bg-white dark:bg-[#1C1C1E] text-gray-900 dark:text-white rounded-xl px-4 py-4 font-bold border border-gray-100 dark:border-[#2C2C2E] outline-none" />
+              <div className="flex gap-2 justify-center py-2">{['🏖️', '💻', '🚗', '🎓', '🏠', '🎮'].map(e => <button key={e} onClick={() => {vibrate(); setIcon(e)}} className={`text-2xl p-2 rounded-xl border-2 active:scale-90 transition-transform ${icon === e ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30' : 'border-transparent hover:bg-gray-100 dark:hover:bg-gray-800'}`}>{e}</button>)}</div>
+              <div className="flex gap-3 justify-center py-2">{['from-blue-400 to-blue-600', 'from-emerald-400 to-emerald-600', 'from-purple-400 to-purple-600', 'from-rose-400 to-rose-600'].map(c => <button key={c} onClick={() => {vibrate(); setColor(c)}} className={`w-8 h-8 rounded-full bg-gradient-to-br ${c} active:scale-90 transition-transform ${color === c ? 'ring-2 ring-offset-2 ring-indigo-500 dark:ring-offset-black' : ''}`} />)}</div>
+            </div>
+            <button onClick={() => { vibrate(); onSave({ name, targetAmount: parseFloat(target), currentAmount: 0, icon, color }); setName(''); setTarget(''); onClose(); }} disabled={!name || !target} className="w-full mt-6 py-4 rounded-2xl font-bold text-white bg-indigo-500 disabled:opacity-50 active:scale-[0.98] transition-transform">Create Jar</button>
+          </div>
+        </div>
+      );
+    }
+    
+    function FundGoalModal({ goal, onClose, onSave, formatCurrency, currency }) {
+      const [amount, setAmount] = useState('');
+      if (!goal) return null;
+      return (
+        <div className="absolute inset-0 z-50 flex flex-col justify-end pointer-events-none">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-auto transition-opacity" onClick={onClose} />
+          <div className="bg-[#F2F2F7] dark:bg-black w-full rounded-t-[2.5rem] shadow-2xl pointer-events-auto flex flex-col p-6 pb-safe spring-up">
+            <div className="text-center mb-6"><div className="text-4xl mb-2">{goal.icon}</div><h2 className="text-xl font-bold text-gray-900 dark:text-white">Fund {goal.name}</h2><p className="text-sm text-gray-500">{formatCurrency(goal.targetAmount - goal.currentAmount, currency)} left to go!</p></div>
+            <div className="flex items-center justify-center text-4xl font-black text-gray-900 dark:text-white bg-white dark:bg-[#1C1C1E] p-6 rounded-3xl border border-gray-100 dark:border-[#2C2C2E] mb-6"><span className="text-gray-300 mr-2 text-2xl">$</span><input type="text" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ''))} placeholder="0.00" className="bg-transparent w-full max-w-[150px] outline-none text-center" autoFocus /></div>
+            <button onClick={() => { vibrate(); onSave(goal.id, goal.currentAmount + parseFloat(amount)); setAmount(''); onClose(); }} disabled={!amount} className="w-full py-4 rounded-2xl font-bold text-white bg-indigo-500 disabled:opacity-50 active:scale-[0.98] transition-transform">Add Funds</button>
           </div>
         </div>
       );
@@ -944,17 +1132,13 @@
       return (
         <div className="absolute inset-0 z-50 flex flex-col justify-end pointer-events-none">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-auto transition-opacity" onClick={onClose} />
-          <div className="bg-[#F2F2F7] dark:bg-black w-full rounded-t-[2.5rem] shadow-[0_-10px_40px_rgba(0,0,0,0.2)] pointer-events-auto flex flex-col relative animate-in slide-in-from-bottom-full p-6 pb-safe max-h-[85%] overflow-y-auto">
+          <div className="bg-[#F2F2F7] dark:bg-black w-full rounded-t-[2.5rem] shadow-[0_-10px_40px_rgba(0,0,0,0.2)] pointer-events-auto flex flex-col relative spring-up p-6 pb-safe max-h-[85%] overflow-y-auto">
             <div className="flex justify-between items-center mb-6 pt-2">
               <h2 className="text-xl font-black text-gray-900 dark:text-white">Upcoming Bills</h2>
-              <button onClick={onAddBill} className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 flex items-center justify-center hover:scale-105 transition-transform"><Plus className="w-5 h-5"/></button>
+              <button onClick={() => {vibrate(); onAddBill()}} className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 flex items-center justify-center hover:scale-105 active:scale-95 transition-transform"><Plus className="w-5 h-5"/></button>
             </div>
-            
             {bills.length === 0 ? (
-              <div className="text-center py-10 text-gray-400 dark:text-gray-500">
-                <Calendar className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                <p className="font-bold">No bills due in the next 7 days.</p>
-              </div>
+              <EmptyState icon={Calendar} color="bg-gradient-to-br from-emerald-400 to-emerald-600" title="All caught up!" subtitle="You have no bills due in the next 7 days." />
             ) : (
               <div className="space-y-3 mb-6">
                 <h3 className="text-[11px] font-bold text-rose-500 uppercase tracking-widest px-2">Due Soon</h3>
@@ -969,136 +1153,44 @@
                 ))}
               </div>
             )}
-
-            {allBills.length > 0 && (
-              <div className="space-y-3">
-                 <h3 className="text-[11px] font-bold text-gray-400 uppercase tracking-widest px-2">All Monthly Bills</h3>
-                 {allBills.map(b => (
-                    <div key={b.id} className="bg-white dark:bg-[#1C1C1E] p-4 rounded-2xl flex items-center justify-between border border-gray-100 dark:border-[#2C2C2E] shadow-sm">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-500 flex items-center justify-center"><Calendar className="w-4 h-4"/></div>
-                        <div><p className="font-bold text-gray-900 dark:text-white text-[14px]">{b.name}</p></div>
-                      </div>
-                      <div className="text-right"><p className="font-bold text-gray-900 dark:text-white">{formatCurrency(b.amount, currency)}</p><p className="text-[10px] text-gray-400 font-bold">Day {b.dueDate}</p></div>
-                    </div>
-                 ))}
-              </div>
-            )}
           </div>
         </div>
       );
     }
-
+    
     function AddBillModal({ isOpen, onClose, onSave }) {
       const [name, setName] = useState(''); const [amount, setAmount] = useState(''); const [dueDate, setDueDate] = useState('1');
       if (!isOpen) return null;
       return (
         <div className="absolute inset-0 z-50 flex flex-col justify-end pointer-events-none">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-auto transition-opacity" onClick={onClose} />
-          <div className="bg-[#F2F2F7] dark:bg-black w-full rounded-t-[2.5rem] shadow-[0_-10px_40px_rgba(0,0,0,0.2)] pointer-events-auto flex flex-col p-6 pb-safe relative animate-in slide-in-from-bottom-full">
+          <div className="bg-[#F2F2F7] dark:bg-black w-full rounded-t-[2.5rem] shadow-[0_-10px_40px_rgba(0,0,0,0.2)] pointer-events-auto flex flex-col p-6 pb-safe relative spring-up">
             <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-6 text-center pt-2">Add Monthly Bill</h2>
             <div className="space-y-4">
               <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Bill Name (e.g. Netflix)" className="w-full bg-white dark:bg-[#1C1C1E] text-gray-900 dark:text-white rounded-xl px-4 py-4 text-[15px] font-bold outline-none border border-gray-100 dark:border-[#2C2C2E]" autoFocus />
               <input type="text" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value.replace(/[^0-9.]/g, ''))} placeholder="Amount" className="w-full bg-white dark:bg-[#1C1C1E] text-gray-900 dark:text-white rounded-xl px-4 py-4 text-[15px] font-bold outline-none border border-gray-100 dark:border-[#2C2C2E]" />
-              <div className="bg-white dark:bg-[#1C1C1E] p-4 rounded-xl border border-gray-100 dark:border-[#2C2C2E] flex items-center justify-between">
-                <span className="font-bold text-gray-900 dark:text-white text-[15px]">Due Date (Day of Month)</span>
-                <select value={dueDate} onChange={e => setDueDate(e.target.value)} className="bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white font-bold rounded-lg px-3 py-1 outline-none">
-                  {Array.from({length: 31}, (_, i) => i + 1).map(d => <option key={d} value={d}>{d}</option>)}
-                </select>
-              </div>
             </div>
-            <button onClick={() => { onSave({ name, amount: parseFloat(amount), dueDate: parseInt(dueDate) }); setName(''); setAmount(''); onClose(); }} disabled={!name || !amount} className="w-full mt-6 py-4 rounded-2xl font-bold text-white bg-emerald-500 disabled:opacity-50">Save Bill</button>
+            <button onClick={() => { vibrate(); onSave({ name, amount: parseFloat(amount), dueDate: parseInt(dueDate) }); setName(''); setAmount(''); onClose(); }} disabled={!name || !amount} className="w-full mt-6 py-4 rounded-2xl font-bold text-white bg-emerald-500 disabled:opacity-50 active:scale-[0.98] transition-transform">Save Bill</button>
           </div>
         </div>
       );
     }
 
-    function AddGoalModal({ isOpen, onClose, onSave }) {
-      const [name, setName] = useState(''); const [target, setTarget] = useState(''); const [icon, setIcon] = useState('🏖️'); const [color, setColor] = useState('from-blue-400 to-blue-600');
-      if (!isOpen) return null;
-      const emojis = ['🏖️', '💻', '🚗', '🎓', '🏠', '🎮'];
-      const colors = ['from-blue-400 to-blue-600', 'from-emerald-400 to-emerald-600', 'from-purple-400 to-purple-600', 'from-rose-400 to-rose-600'];
-      return (
-        <div className="absolute inset-0 z-50 flex flex-col justify-end pointer-events-none">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-auto transition-opacity" onClick={onClose} />
-          <div className="bg-[#F2F2F7] dark:bg-black w-full rounded-t-[2.5rem] shadow-2xl pointer-events-auto flex flex-col p-6 pb-safe animate-in slide-in-from-bottom-full">
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-6 text-center pt-2">New Savings Jar</h2>
-            <div className="space-y-4">
-              <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="What are you saving for?" className="w-full bg-white dark:bg-[#1C1C1E] text-gray-900 dark:text-white rounded-xl px-4 py-4 font-bold border border-gray-100 dark:border-[#2C2C2E] outline-none" />
-              <input type="text" inputMode="decimal" value={target} onChange={e => setTarget(e.target.value.replace(/[^0-9.]/g, ''))} placeholder="Target Amount" className="w-full bg-white dark:bg-[#1C1C1E] text-gray-900 dark:text-white rounded-xl px-4 py-4 font-bold border border-gray-100 dark:border-[#2C2C2E] outline-none" />
-              <div className="flex gap-2 justify-center py-2">
-                {emojis.map(e => <button key={e} onClick={() => setIcon(e)} className={`text-2xl p-2 rounded-xl border-2 ${icon === e ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30' : 'border-transparent hover:bg-gray-100 dark:hover:bg-gray-800'}`}>{e}</button>)}
-              </div>
-              <div className="flex gap-3 justify-center py-2">
-                {colors.map(c => <button key={c} onClick={() => setColor(c)} className={`w-8 h-8 rounded-full bg-gradient-to-br ${c} ${color === c ? 'ring-2 ring-offset-2 ring-indigo-500 dark:ring-offset-black' : ''}`} />)}
-              </div>
-            </div>
-            <button onClick={() => { onSave({ name, targetAmount: parseFloat(target), currentAmount: 0, icon, color }); setName(''); setTarget(''); onClose(); }} disabled={!name || !target} className="w-full mt-6 py-4 rounded-2xl font-bold text-white bg-indigo-500 disabled:opacity-50">Create Jar</button>
-          </div>
-        </div>
-      );
-    }
-
-    function FundGoalModal({ goal, onClose, onSave, formatCurrency, currency }) {
-      const [amount, setAmount] = useState('');
-      if (!goal) return null;
-      return (
-        <div className="absolute inset-0 z-50 flex flex-col justify-end pointer-events-none">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-auto transition-opacity" onClick={onClose} />
-          <div className="bg-[#F2F2F7] dark:bg-black w-full rounded-t-[2.5rem] shadow-2xl pointer-events-auto flex flex-col p-6 pb-safe animate-in slide-in-from-bottom-full">
-            <div className="text-center mb-6"><div className="text-4xl mb-2">{goal.icon}</div><h2 className="text-xl font-bold text-gray-900 dark:text-white">Fund {goal.name}</h2><p className="text-sm text-gray-500">{formatCurrency(goal.targetAmount - goal.currentAmount, currency)} left to go!</p></div>
-            <div className="flex items-center justify-center text-4xl font-black text-gray-900 dark:text-white bg-white dark:bg-[#1C1C1E] p-6 rounded-3xl border border-gray-100 dark:border-[#2C2C2E] mb-6"><span className="text-gray-300 mr-2 text-2xl">$</span><input type="text" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ''))} placeholder="0.00" className="bg-transparent w-full max-w-[150px] outline-none text-center" autoFocus /></div>
-            <button onClick={() => { onSave(goal.id, goal.currentAmount + parseFloat(amount)); setAmount(''); onClose(); }} disabled={!amount} className="w-full py-4 rounded-2xl font-bold text-white bg-indigo-500 disabled:opacity-50">Add Funds</button>
-          </div>
-        </div>
-      );
-    }
-
-    function AddWalletModal({ isOpen, onClose, onSave }) {
-      const [name, setName] = useState(''); const [currency, setCurrency] = useState('USD');
-      if (!isOpen) return null;
-      return (
-        <div className="absolute inset-0 z-50 flex flex-col justify-end pointer-events-none">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-auto" onClick={onClose} />
-          <div className="bg-[#F2F2F7] dark:bg-black w-full rounded-t-[2.5rem] p-6 pb-safe pointer-events-auto animate-in slide-in-from-bottom-full">
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-6 text-center">Add New Wallet</h2>
-            <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Wallet Name" className="w-full bg-white dark:bg-[#1C1C1E] text-gray-900 dark:text-white rounded-xl px-4 py-4 font-bold border border-gray-100 dark:border-[#2C2C2E] outline-none mb-4" />
-            <select value={currency} onChange={e => setCurrency(e.target.value)} className="w-full bg-white dark:bg-[#1C1C1E] text-gray-900 dark:text-white rounded-xl px-4 py-4 font-bold border border-gray-100 dark:border-[#2C2C2E] outline-none mb-6">
-              <option value="USD">USD ($)</option><option value="EUR">EUR (€)</option><option value="GBP">GBP (£)</option>
-            </select>
-            <button onClick={() => { onSave({ name, currency, iconString: 'Wallet' }); setName(''); onClose(); }} disabled={!name} className="w-full py-4 rounded-2xl font-bold text-white bg-emerald-500 disabled:opacity-50">Create</button>
-          </div>
-        </div>
-      );
-    }
-
-    function AddBudgetModal({ isOpen, onClose, onSave, wallets, activeWalletId }) {
-      const [amount, setAmount] = useState(''); const [categoryId, setCategoryId] = useState('food'); const [walletId, setWalletId] = useState(activeWalletId === 'all' ? wallets[0]?.id : activeWalletId);
-      if (!isOpen) return null;
-      return (
-        <div className="absolute inset-0 z-50 flex flex-col justify-end pointer-events-none">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-auto" onClick={onClose} />
-          <div className="bg-[#F2F2F7] dark:bg-black w-full rounded-t-[2.5rem] p-6 pb-safe pointer-events-auto animate-in slide-in-from-bottom-full max-h-[90%] overflow-y-auto">
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-6 text-center">Set Budget</h2>
-            <input type="text" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value.replace(/[^0-9.]/g, ''))} placeholder="Amount" className="w-full bg-white dark:bg-[#1C1C1E] text-gray-900 dark:text-white rounded-xl px-4 py-4 font-bold border border-gray-100 dark:border-[#2C2C2E] outline-none mb-4" />
-            <div className="grid grid-cols-4 gap-2 mb-4 bg-white dark:bg-[#1C1C1E] p-4 rounded-2xl border border-gray-100 dark:border-[#2C2C2E]">
-              {Object.values(CATEGORIES).filter(c => c.type === 'expense').map(cat => (
-                <button key={cat.id} onClick={() => setCategoryId(cat.id)} className={`flex flex-col items-center justify-center p-2 rounded-xl transition-all ${categoryId === cat.id ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 border-2 border-emerald-500' : 'text-gray-500 dark:text-gray-400 border-2 border-transparent'}`}>
-                  <cat.icon className="w-5 h-5 mb-1" /><span className="text-[9px] font-bold truncate w-full">{cat.name}</span>
-                </button>
-              ))}
-            </div>
-            <button onClick={() => { onSave({ categoryId, limit: parseFloat(amount), walletId }); setAmount(''); onClose(); }} disabled={!amount} className="w-full py-4 rounded-2xl font-bold text-white bg-emerald-500 disabled:opacity-50">Save</button>
-          </div>
-        </div>
-      );
-    }
-
+    // --- AUTH SCREENS ---
     function WelcomeScreen({ onNavigate }) {
       return (
-        <div className="absolute inset-0 z-50 bg-gradient-to-br from-emerald-400 to-emerald-600 flex flex-col items-center justify-between p-8 text-white animate-in fade-in">
-          <div className="flex-1 flex flex-col items-center justify-center space-y-6 w-full"><div className="w-24 h-24 bg-white/20 rounded-full flex items-center justify-center shadow-inner backdrop-blur-md"><Wallet className="w-12 h-12 text-white" /></div><div className="text-center"><h1 className="text-5xl font-black mb-3">Cashly</h1><p className="text-emerald-50 text-lg font-medium opacity-90">Your wealth, simplified.</p></div></div>
-          <div className="w-full space-y-4 pb-safe"><button onClick={() => onNavigate('signup')} className="w-full py-4 bg-white text-emerald-600 font-bold rounded-2xl shadow-lg active:scale-95 transition-transform">Get Started</button><button onClick={() => onNavigate('login')} className="w-full py-4 bg-emerald-500/50 border border-emerald-400/50 text-white font-bold rounded-2xl active:scale-95 transition-transform backdrop-blur-md">Log In</button></div>
+        <div className="absolute inset-0 z-50 bg-[#111] flex flex-col items-center justify-between p-8 animate-in fade-in">
+          <div className="flex-1 flex flex-col items-center justify-center space-y-6 w-full">
+            <CashlyLogo className="w-32 h-32 drop-shadow-[0_0_20px_rgba(74,222,128,0.3)] animate-in" />
+            <div className="text-center">
+              <h1 className="text-5xl font-black mb-3 text-white tracking-tight">Cashly</h1>
+              <p className="text-emerald-400 text-lg font-medium opacity-90">Your wealth, simplified.</p>
+            </div>
+          </div>
+          <div className="w-full space-y-4 pb-safe">
+            <button onClick={() => onNavigate('signup')} className="w-full py-4 bg-emerald-500 text-white font-bold rounded-2xl shadow-[0_4px_20px_rgba(16,185,129,0.3)] active:scale-95 transition-transform text-lg">Get Started</button>
+            <button onClick={() => onNavigate('login')} className="w-full py-4 bg-white/5 border border-white/10 text-white font-bold rounded-2xl active:scale-95 transition-transform text-lg backdrop-blur-md">Log In</button>
+          </div>
         </div>
       );
     }
@@ -1106,21 +1198,20 @@
     function SignUpScreen({ onNavigate, auth }) {
       const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [error, setError] = useState(null); const [loading, setLoading] = useState(false);
       const handleAuth = async (method) => {
-        setLoading(true);
-        if(!auth) { setAuthMode('authenticated'); return; } // fallback
+        vibrate(); setLoading(true);
+        if(!auth) { setTimeout(() => onNavigate('authenticated'), 500); return; }
         try { method === 'google' ? await signInWithPopup(auth, new GoogleAuthProvider()) : await createUserWithEmailAndPassword(auth, email, password); }
         catch (err) { setError(err.message.replace('Firebase: ', '')); setLoading(false); }
       };
       return (
-        <div className="absolute inset-0 z-50 bg-white dark:bg-black flex flex-col animate-in slide-in-from-right duration-300">
-          <div className="p-6 pt-12 flex items-center"><button onClick={() => onNavigate('welcome')} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full"><ArrowLeft className="w-6 h-6 text-gray-900 dark:text-white" /></button></div>
-          <div className="flex-1 px-8 pt-4 overflow-y-auto"><h2 className="text-3xl font-black text-gray-900 dark:text-white mb-2">Create Account</h2><p className="text-gray-500 mb-6">Sign up to start managing your funds.</p>
-            {error && <div className="mb-4 p-3 bg-red-50 text-red-600 text-sm font-semibold rounded-xl border border-red-100">{error}</div>}
-            <div className="space-y-4"><input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email Address" className="w-full bg-gray-50 dark:bg-[#1C1C1E] text-gray-900 dark:text-white rounded-2xl px-5 py-4 outline-none" /><input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Password" className="w-full bg-gray-50 dark:bg-[#1C1C1E] text-gray-900 dark:text-white rounded-2xl px-5 py-4 outline-none" /></div>
-            <div className="mt-8 flex items-center gap-4"><div className="h-px flex-1 bg-gray-200 dark:bg-gray-800"></div><span className="text-xs font-bold text-gray-400">OR</span><div className="h-px flex-1 bg-gray-200 dark:bg-gray-800"></div></div>
-            <button onClick={() => handleAuth('google')} disabled={loading} className="w-full mt-8 flex items-center justify-center gap-3 py-4 border border-gray-200 dark:border-gray-800 text-gray-800 dark:text-white font-bold rounded-2xl active:scale-95 disabled:opacity-70"><svg className="w-5 h-5" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>Continue with Google</button>
+        <div className="absolute inset-0 z-50 bg-white dark:bg-[#111] flex flex-col slide-in-right">
+          <div className="p-6 pt-12 flex items-center"><button onClick={() => onNavigate('welcome')} className="p-2 hover:bg-gray-100 dark:hover:bg-white/10 rounded-full transition-colors active:scale-90"><ArrowLeft className="w-6 h-6 text-gray-900 dark:text-white" /></button></div>
+          <div className="flex-1 px-8 pt-4 overflow-y-auto"><h2 className="text-3xl font-black text-gray-900 dark:text-white mb-2">Create Account</h2><p className="text-gray-500 dark:text-gray-400 mb-6">Sign up to start managing your funds.</p>
+            {error && <div className="mb-4 p-3 bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 text-sm font-semibold rounded-xl border border-red-100 dark:border-red-500/20">{error}</div>}
+            <div className="space-y-4"><input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email Address" className="w-full bg-gray-50 dark:bg-[#1C1C1E] text-gray-900 dark:text-white rounded-2xl px-5 py-4 outline-none border border-transparent dark:border-[#2C2C2E]" /><input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Password" className="w-full bg-gray-50 dark:bg-[#1C1C1E] text-gray-900 dark:text-white rounded-2xl px-5 py-4 outline-none border border-transparent dark:border-[#2C2C2E]" /></div>
+            <button onClick={() => handleAuth('google')} disabled={loading} className="w-full mt-8 flex items-center justify-center gap-3 py-4 border border-gray-200 dark:border-[#2C2C2E] text-gray-800 dark:text-white font-bold rounded-2xl active:scale-95 disabled:opacity-70 transition-transform"><svg className="w-5 h-5" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>Continue with Google</button>
           </div>
-          <div className="p-6 pb-safe"><button onClick={() => handleAuth('email')} disabled={loading} className="w-full flex justify-center py-4 bg-emerald-500 text-white font-bold rounded-2xl active:scale-95 disabled:opacity-70">{loading ? <Loader2 className="w-6 h-6 animate-spin" /> : 'Sign Up'}</button></div>
+          <div className="p-6 pb-safe"><button onClick={() => handleAuth('email')} disabled={loading} className="w-full flex justify-center py-4 bg-emerald-500 text-white font-bold rounded-2xl active:scale-95 disabled:opacity-70 transition-transform">{loading ? <Loader2 className="w-6 h-6 animate-spin" /> : 'Sign Up'}</button></div>
         </div>
       );
     }
@@ -1128,22 +1219,21 @@
     function LoginScreen({ onNavigate, auth }) {
       const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [error, setError] = useState(null); const [loading, setLoading] = useState(false);
       const handleAuth = async (method) => {
-        setLoading(true);
-        if(!auth) { setAuthMode('authenticated'); return; } // fallback
+        vibrate(); setLoading(true);
+        if(!auth) { setTimeout(() => onNavigate('authenticated'), 500); return; }
         try { method === 'google' ? await signInWithPopup(auth, new GoogleAuthProvider()) : await signInWithEmailAndPassword(auth, email, password); }
         catch (err) { setError(err.message.replace('Firebase: ', '')); setLoading(false); }
       };
       return (
-        <div className="absolute inset-0 z-50 bg-white dark:bg-black flex flex-col animate-in slide-in-from-right duration-300">
-          <div className="p-6 pt-12 flex items-center"><button onClick={() => onNavigate('welcome')} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full"><ArrowLeft className="w-6 h-6 text-gray-900 dark:text-white" /></button></div>
-          <div className="flex-1 px-8 pt-4 overflow-y-auto"><h2 className="text-3xl font-black text-gray-900 dark:text-white mb-2">Welcome Back</h2><p className="text-gray-500 mb-6">Enter your details to log in.</p>
-            {error && <div className={`mb-4 p-3 text-sm font-semibold rounded-xl border ${error.includes('sent') ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-red-50 text-red-600 border-red-100'}`}>{error}</div>}
-            <div className="space-y-4"><input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email Address" className="w-full bg-gray-50 dark:bg-[#1C1C1E] text-gray-900 dark:text-white rounded-2xl px-5 py-4 outline-none" /><input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Password" className="w-full bg-gray-50 dark:bg-[#1C1C1E] text-gray-900 dark:text-white rounded-2xl px-5 py-4 outline-none" /></div>
-            <div className="mt-4 text-right"><button onClick={async () => { if(email) { try { await sendPasswordResetEmail(auth, email); setError("Reset email sent!"); } catch(e) { setError(e.message); } } else setError("Enter email first."); }} className="text-emerald-500 text-sm font-bold">Forgot Password?</button></div>
-            <div className="mt-8 flex items-center gap-4"><div className="h-px flex-1 bg-gray-200 dark:bg-gray-800"></div><span className="text-xs font-bold text-gray-400">OR</span><div className="h-px flex-1 bg-gray-200 dark:bg-gray-800"></div></div>
-            <button onClick={() => handleAuth('google')} disabled={loading} className="w-full mt-8 flex items-center justify-center gap-3 py-4 border border-gray-200 dark:border-gray-800 text-gray-800 dark:text-white font-bold rounded-2xl active:scale-95 disabled:opacity-70"><svg className="w-5 h-5" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>Continue with Google</button>
+        <div className="absolute inset-0 z-50 bg-white dark:bg-[#111] flex flex-col slide-in-right">
+          <div className="p-6 pt-12 flex items-center"><button onClick={() => onNavigate('welcome')} className="p-2 hover:bg-gray-100 dark:hover:bg-white/10 rounded-full transition-colors active:scale-90"><ArrowLeft className="w-6 h-6 text-gray-900 dark:text-white" /></button></div>
+          <div className="flex-1 px-8 pt-4 overflow-y-auto"><h2 className="text-3xl font-black text-gray-900 dark:text-white mb-2">Welcome Back</h2><p className="text-gray-500 dark:text-gray-400 mb-6">Enter your details to log in.</p>
+            {error && <div className={`mb-4 p-3 text-sm font-semibold rounded-xl border ${error.includes('sent') ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-100 dark:border-emerald-500/20' : 'bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 border-red-100 dark:border-red-500/20'}`}>{error}</div>}
+            <div className="space-y-4"><input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email Address" className="w-full bg-gray-50 dark:bg-[#1C1C1E] text-gray-900 dark:text-white rounded-2xl px-5 py-4 outline-none border border-transparent dark:border-[#2C2C2E]" /><input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Password" className="w-full bg-gray-50 dark:bg-[#1C1C1E] text-gray-900 dark:text-white rounded-2xl px-5 py-4 outline-none border border-transparent dark:border-[#2C2C2E]" /></div>
+            <div className="mt-4 text-right"><button onClick={async () => { vibrate(); if(email) { try { await sendPasswordResetEmail(auth, email); setError("Reset email sent!"); } catch(e) { setError(e.message); } } else setError("Enter email first."); }} className="text-emerald-500 text-sm font-bold">Forgot Password?</button></div>
+            <button onClick={() => handleAuth('google')} disabled={loading} className="w-full mt-8 flex items-center justify-center gap-3 py-4 border border-gray-200 dark:border-[#2C2C2E] text-gray-800 dark:text-white font-bold rounded-2xl active:scale-95 disabled:opacity-70 transition-transform"><svg className="w-5 h-5" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>Continue with Google</button>
           </div>
-          <div className="p-6 pb-safe"><button onClick={() => handleAuth('email')} disabled={loading} className="w-full flex justify-center py-4 bg-gray-900 dark:bg-white dark:text-gray-900 text-white font-bold rounded-2xl active:scale-95 disabled:opacity-70">{loading ? <Loader2 className="w-6 h-6 animate-spin" /> : 'Log In'}</button></div>
+          <div className="p-6 pb-safe"><button onClick={() => handleAuth('email')} disabled={loading} className="w-full flex justify-center py-4 bg-gray-900 dark:bg-white dark:text-gray-900 text-white font-bold rounded-2xl active:scale-95 disabled:opacity-70 transition-transform">{loading ? <Loader2 className="w-6 h-6 animate-spin" /> : 'Log In'}</button></div>
         </div>
       );
     }
@@ -1152,13 +1242,10 @@
     root.render(<App />);
   </script>
 
-  <!-- PWA Service Worker Registration -->
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('sw.js')
-          .then(registration => console.log('ServiceWorker registered'))
-          .catch(err => console.log('ServiceWorker registration failed: ', err));
+        navigator.serviceWorker.register('sw.js').catch(err => console.log('ServiceWorker registration failed: ', err));
       });
     }
   </script>
