@@ -48,8 +48,8 @@
       ShoppingBag, Film, FileText, DollarSign, ArrowLeft, Calendar, 
       ChevronLeft, ChevronRight, TrendingDown, TrendingUp, Home, 
       Target, Globe, CreditCard, RefreshCw, ArrowRightLeft,
-      Heart, Book, Repeat, Zap, Landmark, Shield, LogOut, ChevronRight as ChevronRightIcon,
-      User, HelpCircle, Info, Loader2, Trophy, AlertCircle, Trash2, Rocket
+      Heart, Book, Repeat, Zap, Landmark, Shield, LogOut,
+      User, HelpCircle, Info, Loader2, Trophy, AlertCircle, Trash2, Rocket, Download
     } from 'https://esm.sh/lucide-react@0.292.0?deps=react@18.2.0';
 
     // --- FIREBASE SETUP ---
@@ -180,7 +180,6 @@
       const [authLoading, setAuthLoading] = useState(true);
       const [authMode, setAuthMode] = useState('welcome'); 
       
-      // Initialize states gracefully directly from safe local helpers
       const [transactions, setTransactions] = useState(() => safeLocalGet('cashly_transactions', []));
       const [wallets, setWallets] = useState(() => safeLocalGet('cashly_wallets', [{ id: 'w1', name: 'Main Wallet', currency: 'USD', iconString: 'Wallet' }]));
       const [budgets, setBudgets] = useState(() => safeLocalGet('cashly_budgets', []));
@@ -200,7 +199,6 @@
       const [isNotifOpen, setIsNotifOpen] = useState(false);
       const [isAddBillOpen, setIsAddBillOpen] = useState(false);
 
-      // SECURITY STATES
       const [isLocked, setIsLocked] = useState(() => {
         const prefs = safeLocalGet('cashly_prefs', {});
         return !!(prefs && prefs.securityPin);
@@ -209,7 +207,6 @@
 
       useEffect(() => {
         if (isMissingConfig) {
-          // States are already pre-loaded via initializers
           setAuthLoading(false);
           setUser({ uid: 'local', email: 'Local Device Mode', displayName: 'Offline User' });
           setAuthMode('authenticated');
@@ -273,7 +270,8 @@
 
       const { totalIncome, totalExpense, balance } = useMemo(() => {
         let inc = 0, exp = 0, bal = 0;
-        const convert = (amt, wId) => activeWalletId === 'all' ? amt * (EX_RATES[wallets.find(w=>w.id===wId)?.currency] || 1) : amt;
+        const baseRate = EX_RATES[preferences?.baseCurrency || 'USD'] || 1;
+        const convert = (amt, wId) => activeWalletId === 'all' ? (amt * (EX_RATES[wallets.find(w=>w.id===wId)?.currency] || 1)) / baseRate : amt;
         
         viewTransactions.forEach(t => {
           let amt = t.type !== 'transfer' ? convert(t.amount, t.walletId) : 0;
@@ -351,6 +349,36 @@
         return 'bg-gradient-to-br from-emerald-500 to-teal-600 dark:from-emerald-800 dark:to-teal-900';
       };
 
+      const handleExport = () => {
+        vibrate();
+        const headers = ["Date", "Type", "Category", "Amount", "Currency", "Note"];
+        const rows = monthTransactions.map(t => {
+          const catName = CATEGORIES[t.categoryId]?.name || 'Transfer';
+          const wallet = wallets.find(w => w.id === t.walletId);
+          const curr = wallet ? wallet.currency : 'USD';
+          return [
+            new Date(t.date).toLocaleDateString(),
+            t.type,
+            catName,
+            t.amount,
+            curr,
+            `"${(t.note || '').replace(/"/g, '""')}"`
+          ].join(",");
+        });
+        
+        const csvString = [headers.join(","), ...rows].join("\n");
+        const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        const url = URL.createObjectURL(blob);
+        link.setAttribute("href", url);
+        const monthName = currentMonth.toLocaleString('default', { month: 'long', year: 'numeric' });
+        link.setAttribute("download", `Cashly_Export_${monthName.replace(/ /g, '_')}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      };
+
       return (
         <div className={preferences?.isDarkMode ? 'dark' : ''}>
           <div className="min-h-screen bg-black sm:bg-gray-900 dark:sm:bg-black flex items-center justify-center font-sans sm:p-4 text-gray-900 dark:text-white transition-colors duration-300 overflow-y-auto">
@@ -363,7 +391,7 @@
               <div className="w-full max-w-md h-[100dvh] sm:h-[100vh] sm:max-h-[850px] sm:rounded-[40px] sm:border-[8px] border-gray-800 dark:border-gray-700 bg-[#F2F2F7] dark:bg-black overflow-hidden relative flex flex-col shadow-2xl transition-colors duration-300">
                 
                 {isLocked ? (
-                  <LockScreen pin={preferences?.securityPin} onUnlock={() => setIsLocked(false)} />
+                  <LockScreen pin={preferences?.securityPin || safeLocalGet('cashly_prefs', {}).securityPin} onUnlock={() => setIsLocked(false)} />
                 ) : (
                   <>
                     {!user && authMode === 'welcome' && <WelcomeScreen onNavigate={(m) => {vibrate(); setAuthMode(m)}} />}
@@ -452,13 +480,13 @@
                             <RecordsView transactions={monthTransactions} currency={activeWallet.currency} formatCurrency={formatCurrency} wallets={wallets} activeWalletId={activeWalletId} onAdd={() => setIsAddOpen(true)} />
                           )}
                           {currentTab === 'analytics' && (
-                            <AnalyticsView transactions={monthTransactions} totalExpense={totalExpense} currency={activeWallet.currency} formatCurrency={formatCurrency} />
+                            <AnalyticsView transactions={monthTransactions} totalExpense={totalExpense} currency={activeWallet.currency} formatCurrency={formatCurrency} wallets={wallets} activeWalletId={activeWalletId} />
                           )}
                           {currentTab === 'planning' && (
-                            <PlanningView transactions={monthTransactions} budgets={budgets.filter(b=>activeWalletId==='all'||b.walletId===activeWalletId)} goals={goals} currency={activeWallet.currency} formatCurrency={formatCurrency} onAddBudget={() => {vibrate(); setIsAddBudgetOpen(true)}} onAddGoal={() => {vibrate(); setIsAddGoalOpen(true)}} onFundGoal={(g) => {vibrate(); setIsFundGoalOpen(g)}} />
+                            <PlanningView transactions={monthTransactions} budgets={budgets.filter(b=>activeWalletId==='all'||b.walletId===activeWalletId)} goals={goals} currency={activeWallet.currency} formatCurrency={formatCurrency} onAddBudget={() => {vibrate(); setIsAddBudgetOpen(true)}} onAddGoal={() => {vibrate(); setIsAddGoalOpen(true)}} onFundGoal={(g) => {vibrate(); setIsFundGoalOpen(g)}} wallets={wallets} activeWalletId={activeWalletId} />
                           )}
                           {currentTab === 'settings' && (
-                            <SettingsView user={user} wallets={wallets} prefs={preferences || {}} setPref={updatePreference} onAddWallet={() => {vibrate(); setIsAddWalletOpen(true)}} onDeleteWallet={(id) => { deleteFromFirebase('wallets', id); if(activeWalletId === id) setActiveWalletId('all'); }} onLogout={() => {vibrate(); auth ? signOut(auth) : setAuthMode('welcome')}} onEnableSecurity={() => {vibrate(); setIsPinSetupOpen(true)}} />
+                            <SettingsView user={user} wallets={wallets} prefs={preferences || {}} setPref={updatePreference} onAddWallet={() => {vibrate(); setIsAddWalletOpen(true)}} onDeleteWallet={(id) => { deleteFromFirebase('wallets', id); if(activeWalletId === id) setActiveWalletId('all'); }} onLogout={() => {vibrate(); auth ? signOut(auth) : setAuthMode('welcome')}} onEnableSecurity={() => {vibrate(); setIsPinSetupOpen(true)}} onExport={handleExport} />
                           )}
                         </div>
 
@@ -541,6 +569,7 @@
     function RecordsView({ transactions, currency, formatCurrency, wallets, activeWalletId, onAdd }) {
       const groupedTransactions = useMemo(() => {
         const groups = {};
+        const baseRate = EX_RATES[currency] || 1;
         transactions.forEach(t => {
           const dateKey = new Date(t.date).toDateString();
           if (!groups[dateKey]) groups[dateKey] = { date: t.date, items: [], total: 0 };
@@ -548,7 +577,7 @@
           let amount = t.amount;
           if (activeWalletId === 'all' && t.type !== 'transfer') {
             const w = wallets.find(w => w.id === t.walletId);
-            amount = t.amount * (EX_RATES[w?.currency] || 1);
+            amount = (t.amount * (EX_RATES[w?.currency] || 1)) / baseRate;
             groups[dateKey].total += t.type === 'expense' ? -amount : amount;
           } else if (activeWalletId !== 'all') {
             if (t.type === 'transfer') {
@@ -558,7 +587,7 @@
           }
         });
         return Object.values(groups).sort((a, b) => new Date(b.date) - new Date(a.date));
-      }, [transactions, activeWalletId, wallets]);
+      }, [transactions, activeWalletId, wallets, currency]);
 
       if (groupedTransactions.length === 0) {
         return <EmptyState icon={Rocket} color="bg-gradient-to-br from-emerald-400 to-teal-500" title="Nothing here yet!" subtitle="Your financial journey starts with a single step. Add an expense or income." actionLabel="Add Transaction" onAction={onAdd} />;
@@ -596,7 +625,7 @@
                         </div>
                       </div>
                       <span className={`font-semibold text-[15px] ${isTransfer ? (isPositive ? 'text-emerald-500' : 'text-gray-900 dark:text-white') : (tx.type === 'income' ? 'text-emerald-500' : 'text-gray-900 dark:text-white')}`}>
-                        {isPositive ? '+' : '-'}{formatCurrency(displayAmount, activeWalletId === 'all' && !isTransfer ? wallets.find(w=>w.id===tx.walletId)?.currency : currency)}
+                        {isPositive ? '+' : '-'}{formatCurrency(displayAmount, activeWalletId === 'all' ? wallets.find(w=>w.id===(isTransfer ? tx.fromWalletId : tx.walletId))?.currency : currency)}
                       </span>
                     </div>
                   );
@@ -608,16 +637,25 @@
       );
     }
 
-    function AnalyticsView({ transactions, totalExpense, currency, formatCurrency }) {
+    function AnalyticsView({ transactions, totalExpense, currency, formatCurrency, wallets, activeWalletId }) {
       const analyticsData = useMemo(() => {
         const expenses = transactions.filter(t => t.type === 'expense');
         const categoryTotals = {};
-        expenses.forEach(t => { if (!categoryTotals[t.categoryId]) categoryTotals[t.categoryId] = 0; categoryTotals[t.categoryId] += t.amount; });
+        const baseRate = EX_RATES[currency] || 1;
+        expenses.forEach(t => { 
+          if (!categoryTotals[t.categoryId]) categoryTotals[t.categoryId] = 0; 
+          let amount = t.amount || 0;
+          if (activeWalletId === 'all') {
+            const w = wallets.find(w => w.id === t.walletId);
+            amount = (amount * (EX_RATES[w?.currency] || 1)) / baseRate;
+          }
+          categoryTotals[t.categoryId] += amount; 
+        });
         return Object.keys(categoryTotals).map(catId => {
           const amount = categoryTotals[catId];
           return { ...CATEGORIES[catId], amount, percentage: totalExpense > 0 ? (amount / totalExpense) * 100 : 0 };
         }).sort((a, b) => b.amount - a.amount);
-      }, [transactions, totalExpense]);
+      }, [transactions, totalExpense, currency, wallets, activeWalletId]);
 
       if (analyticsData.length === 0) {
         return <EmptyState icon={PieChart} color="bg-gradient-to-br from-gray-400 to-gray-600" title="No Data to Analyze" subtitle="Keep logging your expenses to unlock beautiful insights." />;
@@ -635,9 +673,10 @@
               {(() => {
                 let currentOffset = 0; const circumference = 2 * Math.PI * 80;
                 return analyticsData.map((data, i) => {
-                  const segmentLength = (data.percentage / 100) * circumference;
-                  const gap = analyticsData.length > 1 && data.percentage < 100 ? 6 : 0;
-                  const activeLength = Math.max(0, segmentLength - gap);
+                  const safePercent = data.percentage || 0;
+                  const segmentLength = (safePercent / 100) * circumference;
+                  const gap = analyticsData.length > 1 && safePercent < 100 ? 6 : 0;
+                  const activeLength = Math.max(0, segmentLength - gap) || 0;
                   const offsetToApply = currentOffset; currentOffset += segmentLength;
                   return (
                     <circle key={i} cx="100" cy="100" r="80" fill="transparent" stroke={COLOR_MAP[data.bg] || '#10b981'} strokeWidth="18" strokeDasharray={`${activeLength} ${circumference}`} strokeDashoffset={0} strokeLinecap="round" transform={`rotate(${(offsetToApply / circumference) * 360} 100 100)`} className="transition-all duration-1000 ease-out animate-in fade-in" style={{ animationDelay: `${i * 0.1}s` }} />
@@ -660,7 +699,7 @@
                         <span className="font-semibold text-gray-900 dark:text-gray-100">{formatCurrency(data.amount, currency)}</span>
                       </div>
                       <div className="h-1.5 w-full bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
-                        <div className={`h-full rounded-full ${data.bg}`} style={{ width: `${data.percentage}%` }}></div>
+                        <div className={`h-full rounded-full ${data.bg}`} style={{ width: `${data.percentage || 0}%` }}></div>
                       </div>
                     </div>
                   </div>
@@ -672,15 +711,26 @@
       );
     }
 
-    function PlanningView({ transactions, budgets, goals, currency, formatCurrency, onAddBudget, onAddGoal, onFundGoal }) {
+    function PlanningView({ transactions, budgets, goals, currency, formatCurrency, onAddBudget, onAddGoal, onFundGoal, wallets, activeWalletId }) {
       const [mode, setMode] = useState('budgets');
 
-      const budgetStats = useMemo(() => budgets.map(budget => {
-        const spent = transactions.filter(t => t.categoryId === budget.categoryId && t.type === 'expense' && (t.walletId === budget.walletId || budget.walletId === 'all')).reduce((sum, t) => sum + t.amount, 0);
-        const percentage = Math.min((spent / budget.limit) * 100, 100);
-        const categoryData = CATEGORIES[budget.categoryId] || { name: 'Unknown', icon: HelpCircle, bg: 'bg-gray-500' };
-        return { ...budget, spent, percentage, category: categoryData, statusColor: percentage >= 100 ? 'bg-rose-500' : percentage > 80 ? 'bg-orange-500' : 'bg-emerald-500' };
-      }), [transactions, budgets]);
+      const budgetStats = useMemo(() => {
+        const baseRate = EX_RATES[currency] || 1;
+        return budgets.map(budget => {
+          const spent = transactions.filter(t => t.categoryId === budget.categoryId && t.type === 'expense' && (t.walletId === budget.walletId || budget.walletId === 'all')).reduce((sum, t) => {
+            let amount = t.amount || 0;
+            if (activeWalletId === 'all') {
+              const w = wallets.find(w => w.id === t.walletId);
+              amount = (amount * (EX_RATES[w?.currency] || 1)) / baseRate;
+            }
+            return sum + amount;
+          }, 0);
+          const safeLimit = budget.limit || 1;
+          const percentage = Math.min((spent / safeLimit) * 100, 100) || 0;
+          const categoryData = CATEGORIES[budget.categoryId] || { name: 'Unknown', icon: HelpCircle, bg: 'bg-gray-500' };
+          return { ...budget, spent, percentage, category: categoryData, statusColor: percentage >= 100 ? 'bg-rose-500' : percentage > 80 ? 'bg-orange-500' : 'bg-emerald-500' };
+        });
+      }, [transactions, budgets, currency, wallets, activeWalletId]);
 
       return (
         <div className="px-4 py-6 space-y-6 animate-in fade-in duration-300">
@@ -715,7 +765,7 @@
                           <span className={b.percentage >= 100 ? 'text-rose-500' : 'text-emerald-500'}>{b.percentage >= 100 ? 'Over Limit' : `${formatCurrency(b.limit - b.spent, currency)} Left`}</span>
                         </div>
                         <div className="h-3 w-full bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden shadow-inner">
-                          <div className={`h-full rounded-full ${b.statusColor} transition-all duration-700 ease-out`} style={{ width: `${b.percentage}%` }}></div>
+                          <div className={`h-full rounded-full ${b.statusColor} transition-all duration-700 ease-out`} style={{ width: `${b.percentage || 0}%` }}></div>
                         </div>
                       </div>
                     </div>
@@ -733,7 +783,8 @@
                 <>
                   <div className="flex justify-between items-center px-2 mb-2"><h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider">Savings Jars</h3><button onClick={onAddGoal} className="text-sm font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1 active:scale-95"><Plus className="w-4 h-4" /> Create</button></div>
                   {goals.map((g, i) => {
-                    const percentage = Math.min((g.currentAmount / g.targetAmount) * 100, 100);
+                    const safeTarget = g.targetAmount || 1;
+                    const percentage = Math.min((g.currentAmount / safeTarget) * 100, 100) || 0;
                     return (
                       <div key={i} className="bg-white dark:bg-[#1C1C1E] p-5 rounded-3xl shadow-sm border border-gray-100 dark:border-[#2C2C2E] transition-colors group">
                         <div className="flex justify-between items-start mb-4">
@@ -766,7 +817,7 @@
       );
     }
 
-    function SettingsView({ user, wallets, prefs, setPref, onAddWallet, onDeleteWallet, onLogout, onEnableSecurity }) {
+    function SettingsView({ user, wallets, prefs, setPref, onAddWallet, onDeleteWallet, onLogout, onEnableSecurity, onExport }) {
       const [activeModal, setActiveModal] = useState(null); 
       const [walletToDelete, setWalletToDelete] = useState(null);
 
@@ -779,7 +830,7 @@
           </div>
           <div className="flex items-center gap-2">
             {value && <span className="text-[13px] font-bold text-gray-400">{value}</span>}
-            <ChevronRightIcon className="w-5 h-5 text-gray-300" />
+            <ChevronRight className="w-5 h-5 text-gray-300" />
           </div>
         </div>
       );
@@ -836,6 +887,7 @@
 
           <SectionTitle>More</SectionTitle>
           <div className="bg-white dark:bg-[#1C1C1E] rounded-3xl shadow-sm border border-gray-100 dark:border-[#2C2C2E] overflow-hidden divide-y divide-gray-50 dark:divide-[#2C2C2E]">
+            <Row icon={Download} color="bg-emerald-500" label="Export Monthly Data" onClick={onExport} />
             <Row icon={HelpCircle} color="bg-blue-500" label="Help Center" onClick={() => setActiveModal('Help Center')} />
             <Row icon={Info} color="bg-gray-800" label="About Cashly" onClick={() => setActiveModal('About Cashly')} />
           </div>
@@ -891,10 +943,10 @@
                     </div>
                   )}
                   {activeModal === 'Help Center' && (
-                    <div className="space-y-4 text-center py-4"><HelpCircle className="w-12 h-12 text-blue-500 mx-auto opacity-50" /><p className="font-bold text-gray-900 dark:text-white">How can we help?</p><p className="text-sm text-gray-500">Reach out at <span className="text-blue-500">support@cashly.app</span></p></div>
+                    <div className="space-y-4 text-center py-4"><HelpCircle className="w-12 h-12 text-blue-500 mx-auto opacity-50" /><p className="font-bold text-gray-900 dark:text-white">How can we help?</p><p className="text-sm text-gray-500">Reach out at <a href="mailto:Iamsidhh@gmail.com" className="text-blue-500">Iamsidhh@gmail.com</a></p></div>
                   )}
                   {activeModal === 'About Cashly' && (
-                    <div className="space-y-4 text-center py-4"><CashlyLogo className="w-20 h-20 mx-auto drop-shadow-lg" /><p className="font-bold text-lg">Cashly</p><p className="text-sm text-gray-500">Version 3.0.0<br/>Your wealth, simplified.</p></div>
+                    <div className="space-y-4 text-center py-4"><CashlyLogo className="w-20 h-20 mx-auto drop-shadow-lg" /><p className="font-bold text-lg">Cashly</p><p className="text-sm text-gray-500">Version 3.1.0<br/>Your wealth, simplified.<br/><br/><span className="font-medium text-emerald-500">Made by Sidhh with love in DEL🏢</span></p></div>
                   )}
                 </div>
               </div>
@@ -1127,6 +1179,7 @@
       );
     }
     
+    // AddGoalModal, FundGoalModal, NotificationsModal, AddBillModal follow same spring-up structure
     function AddGoalModal({ isOpen, onClose, onSave }) {
       const [name, setName] = useState(''); const [target, setTarget] = useState(''); const [icon, setIcon] = useState('🏖️'); const [color, setColor] = useState('from-blue-400 to-blue-600');
       if (!isOpen) return null;
