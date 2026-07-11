@@ -84,7 +84,7 @@
       GoogleAuthProvider, signInWithPopup, sendPasswordResetEmail
     } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
     import { 
-      getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc, enableIndexedDbPersistence
+      getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc
     } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 
     // Robust Local Storage Wrappers to prevent global execution halts
@@ -136,8 +136,6 @@
         app = initializeApp(firebaseConfig);
         auth = getAuth(app);
         db = getFirestore(app);
-        try { enableIndexedDbPersistence(db).catch(err => console.warn("Persistence warning:", err.code)); } 
-        catch (e) { console.warn("Could not enable offline persistence"); }
       }
     } catch(e) { console.error("Firebase init failed:", e); }
 
@@ -203,6 +201,7 @@
       const [user, setUser] = useState(null);
       const [authLoading, setAuthLoading] = useState(true);
       const [authMode, setAuthMode] = useState('welcome'); 
+      const [isLocalMode, setIsLocalMode] = useState(isMissingConfig); // Bulletproof fallback state
       
       const [transactions, setTransactions] = useState(() => safeLocalGet('cashly_transactions', []));
       const [wallets, setWallets] = useState(() => safeLocalGet('cashly_wallets', [{ id: 'w1', name: 'Main Wallet', currency: 'USD', iconString: 'Wallet' }]));
@@ -218,9 +217,7 @@
       const [isAddOpen, setIsAddOpen] = useState(false);
       const [isAddWalletOpen, setIsAddWalletOpen] = useState(false);
       
-      // Changed to handle true (new budget) or object (editing budget)
       const [budgetModalData, setBudgetModalData] = useState(null);
-      
       const [isAddGoalOpen, setIsAddGoalOpen] = useState(false);
       const [isFundGoalOpen, setIsFundGoalOpen] = useState(null); 
       const [isNotifOpen, setIsNotifOpen] = useState(false);
@@ -241,37 +238,69 @@
           return;
         }
 
+        let isMounted = true;
         const initAuth = async () => {
           try {
             if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) await signInWithCustomToken(auth, __initial_auth_token);
             else await signInAnonymously(auth);
-          } catch (err) { console.error('Initial Auth Error', err); setAuthLoading(false); }
+          } catch (err) { 
+            console.warn('Initial Auth Error, falling back to local mode', err); 
+            if (isMounted) {
+              setIsLocalMode(true);
+              setUser({ uid: 'local', email: 'Local Device Mode', displayName: 'Offline User' });
+              setAuthMode('authenticated');
+              setAuthLoading(false);
+            }
+          }
         };
         initAuth();
 
         const unsubscribe = onAuthStateChanged(auth, (usr) => {
-          setUser(usr);
-          setAuthLoading(false);
-          if (!usr) setAuthMode('welcome');
+          if (!isMounted) return;
+          if (usr) {
+             setUser(usr);
+             setIsLocalMode(false);
+             setAuthLoading(false);
+          } else if (!isLocalMode) {
+             setAuthLoading(false);
+             setAuthMode('welcome');
+          }
         });
-        return () => unsubscribe();
-      }, [isMissingConfig]);
+        return () => { isMounted = false; unsubscribe(); };
+      }, [isMissingConfig, isLocalMode]);
 
       useEffect(() => {
-        if (!user || isMissingConfig) return;
+        if (!user || isMissingConfig || isLocalMode) return;
 
         const syncCollection = (collName, setter) => {
-          return onSnapshot(collection(db, 'artifacts', appId, 'users', user.uid, collName), snap => setter(snap.docs.map(d => ({ id: d.id, ...d.data() }))), err => console.error(err));
+          return onSnapshot(
+            collection(db, 'artifacts', appId, 'users', user.uid, collName), 
+            snap => setter(snap.docs.map(d => ({ id: d.id, ...d.data() }))), 
+            err => console.error(`Error syncing ${collName}:`, err)
+          );
         };
 
-        const unsubWallets = onSnapshot(collection(db, 'artifacts', appId, 'users', user.uid, 'wallets'), async (snap) => {
-          if (snap.empty) await setDoc(doc(collection(db, 'artifacts', appId, 'users', user.uid, 'wallets'), 'w1'), { name: 'Main Wallet', currency: 'USD', iconString: 'Wallet' });
-          else setWallets(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-        });
+        const unsubWallets = onSnapshot(
+          collection(db, 'artifacts', appId, 'users', user.uid, 'wallets'), 
+          async (snap) => {
+            if (snap.empty) {
+              try {
+                await setDoc(doc(collection(db, 'artifacts', appId, 'users', user.uid, 'wallets'), 'w1'), { name: 'Main Wallet', currency: 'USD', iconString: 'Wallet' });
+              } catch(e) {
+                console.error("Failed to create default wallet:", e);
+                setWallets([{ id: 'w1', name: 'Main Wallet', currency: 'USD', iconString: 'Wallet' }]);
+              }
+            }
+            else setWallets(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+          },
+          err => console.error("Error syncing wallets:", err)
+        );
 
-        const unsubPrefs = onSnapshot(doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'preferences'), (doc) => {
-          if (doc.exists()) setPreferences(doc.data());
-        });
+        const unsubPrefs = onSnapshot(
+          doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'preferences'), 
+          (doc) => { if (doc.exists()) setPreferences(doc.data()); },
+          err => console.error("Error syncing preferences:", err)
+        );
 
         const unsubTx = syncCollection('transactions', setTransactions);
         const unsubBg = syncCollection('budgets', setBudgets);
@@ -279,7 +308,7 @@
         const unsubBl = syncCollection('bills', setBills);
 
         return () => { unsubWallets(); unsubPrefs(); unsubTx(); unsubBg(); unsubGl(); unsubBl(); };
-      }, [user, isMissingConfig]);
+      }, [user, isMissingConfig, isLocalMode]);
 
       const activeWallet = activeWalletId === 'all' ? { id: 'all', name: 'All Wallets', currency: preferences?.baseCurrency || 'USD' } : wallets.find(w => w.id === activeWalletId) || wallets[0] || { name: 'Loading...', currency: 'USD' };
       
@@ -334,7 +363,8 @@
       }, [bills]);
 
       const saveToFirebase = async (collectionName, data, id = null) => {
-        if (isMissingConfig) {
+        // Robust fallback to local storage if Firebase is missing or auth failed
+        if (isMissingConfig || isLocalMode || !user) {
           const newData = { ...data, id: id || Date.now().toString() };
           if (collectionName === 'transactions') { setTransactions(p => { const n = [newData, ...p]; safeLocalSet('cashly_transactions', n); return n; }); }
           if (collectionName === 'wallets') { setWallets(p => { const n = [...p, newData]; safeLocalSet('cashly_wallets', n); return n; }); }
@@ -344,20 +374,23 @@
           return;
         }
 
-        if (!user) return;
         try {
           const ref = id ? doc(db, 'artifacts', appId, 'users', user.uid, collectionName, id) : doc(collection(db, 'artifacts', appId, 'users', user.uid, collectionName));
           await setDoc(ref, { ...data, id: ref.id }, { merge: true });
-        } catch (err) { console.error(`Error saving ${collectionName}`, err); }
+        } catch (err) { 
+          console.error(`Error saving ${collectionName} to Firebase`, err); 
+          // Even if Firestore fails due to permissions, save locally to avoid dataloss
+          const newData = { ...data, id: id || Date.now().toString() };
+          if (collectionName === 'transactions') { setTransactions(p => { const n = [newData, ...p]; safeLocalSet('cashly_transactions', n); return n; }); }
+        }
       };
 
       const deleteFromFirebase = async (collectionName, id) => {
-        if (isMissingConfig) {
+        if (isMissingConfig || isLocalMode || !user) {
           if (collectionName === 'wallets') { setWallets(p => { const n = p.filter(w => w.id !== id); safeLocalSet('cashly_wallets', n); return n; }); }
           if (collectionName === 'budgets') { setBudgets(p => { const n = p.filter(b => b.id !== id); safeLocalSet('cashly_budgets', n); return n; }); }
           return;
         }
-        if (!user) return;
         try { await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, collectionName, id)); } 
         catch (err) { console.error(`Error deleting ${collectionName}`, err); }
       };
@@ -365,10 +398,10 @@
       const updatePreference = (key, value) => {
         setPreferences(p => { 
           const next = { ...p, [key]: value }; 
-          if (isMissingConfig) safeLocalSet('cashly_prefs', next); 
+          if (isMissingConfig || isLocalMode) safeLocalSet('cashly_prefs', next); 
           return next; 
         });
-        if (!isMissingConfig) saveToFirebase('settings', { [key]: value }, 'preferences');
+        if (!isMissingConfig && !isLocalMode && user) saveToFirebase('settings', { [key]: value }, 'preferences');
       };
 
       const getHeaderStyle = () => {
@@ -484,9 +517,9 @@
                           )}
                         </div>
 
-                        {isMissingConfig && (
+                        {isLocalMode && (
                           <div className="bg-orange-500 text-white text-xs font-bold p-2 text-center shadow-sm">
-                            Running in offline browser mode (No cloud sync).
+                            Running in Offline / Local Mode (Syncing Paused).
                           </div>
                         )}
 
@@ -991,7 +1024,7 @@
                     <div className="space-y-4 text-center py-4"><HelpCircle className="w-12 h-12 text-blue-500 mx-auto opacity-50" /><p className="font-bold text-gray-900 dark:text-white">How can we help?</p><p className="text-sm text-gray-500">Reach out at <a href="mailto:Iamsidhh@gmail.com" className="text-blue-500">Iamsidhh@gmail.com</a></p></div>
                   )}
                   {activeModal === 'About Cashly' && (
-                    <div className="space-y-4 text-center py-4"><CashlyLogo className="w-20 h-20 mx-auto drop-shadow-lg" /><p className="font-bold text-lg">Cashly</p><p className="text-sm text-gray-500">Version 3.1.0<br/>Your wealth, simplified.<br/><br/><span className="font-medium text-emerald-500">Made by Sidhh with love in DEL🏢</span></p></div>
+                    <div className="space-y-4 text-center py-4"><CashlyLogo className="w-20 h-20 mx-auto drop-shadow-lg" /><p className="font-bold text-lg">Cashly</p><p className="text-sm text-gray-500">Version 3.1.1<br/>Your wealth, simplified.<br/><br/><span className="font-medium text-emerald-500">Made by Sidhh with love in DEL🏢</span></p></div>
                   )}
                 </div>
               </div>
@@ -1110,8 +1143,19 @@
 
     function AddTransactionModal({ isOpen, onClose, onSave, wallets, initialWalletId }) {
       const [type, setType] = useState('expense'); const [amount, setAmount] = useState(''); const [selectedCategory, setSelectedCategory] = useState(null); const [note, setNote] = useState(''); const [selectedWalletId, setSelectedWalletId] = useState(initialWalletId); const [fromWalletId, setFromWalletId] = useState(''); const [toWalletId, setToWalletId] = useState('');
-      useEffect(() => { if(isOpen) { setSelectedWalletId(initialWalletId); setFromWalletId(wallets[0]?.id || ''); setToWalletId(wallets[1]?.id || wallets[0]?.id || ''); } }, [isOpen, initialWalletId, wallets]);
+      
+      useEffect(() => { 
+        if (isOpen) { 
+          // Provide safer defaults if the wallet arrays haven't fully populated yet
+          const safeWallet = initialWalletId || wallets[0]?.id || '';
+          setSelectedWalletId(safeWallet); 
+          setFromWalletId(safeWallet); 
+          setToWalletId(wallets.length > 1 ? wallets[1].id : safeWallet); 
+        } 
+      }, [isOpen, initialWalletId, wallets]);
+      
       if (!isOpen) return null;
+
       return (
         <div className="absolute inset-0 z-50 flex flex-col justify-end pointer-events-none">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-auto transition-opacity" onClick={onClose} />
