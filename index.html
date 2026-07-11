@@ -230,6 +230,20 @@
       });
       const [isPinSetupOpen, setIsPinSetupOpen] = useState(false);
 
+      const handleLogout = () => {
+        vibrate();
+        if (auth) signOut(auth);
+        setUser(null);
+        setIsLocalMode(false);
+        setAuthMode('welcome');
+        // Clear data so it doesn't bleed into next login
+        setTransactions([]);
+        setWallets([{ id: 'w1', name: 'Main Wallet', currency: 'USD', iconString: 'Wallet' }]);
+        setBudgets([]);
+        setGoals([]);
+        setBills([]);
+      };
+
       useEffect(() => {
         if (isMissingConfig) {
           setAuthLoading(false);
@@ -261,7 +275,9 @@
              setUser(usr);
              setIsLocalMode(false);
              setAuthLoading(false);
-          } else if (!isLocalMode) {
+          } else {
+             setUser(null);
+             setIsLocalMode(false);
              setAuthLoading(false);
              setAuthMode('welcome');
           }
@@ -275,7 +291,11 @@
         const syncCollection = (collName, setter) => {
           return onSnapshot(
             collection(db, 'artifacts', appId, 'users', user.uid, collName), 
-            snap => setter(snap.docs.map(d => ({ id: d.id, ...d.data() }))), 
+            snap => {
+              const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+              setter(data);
+              safeLocalSet(`cashly_${collName}`, data); // Keep local cache tightly synced with cloud
+            }, 
             err => console.error(`Error syncing ${collName}:`, err)
           );
         };
@@ -291,14 +311,24 @@
                 setWallets([{ id: 'w1', name: 'Main Wallet', currency: 'USD', iconString: 'Wallet' }]);
               }
             }
-            else setWallets(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+            else {
+              const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+              setWallets(data);
+              safeLocalSet('cashly_wallets', data);
+            }
           },
           err => console.error("Error syncing wallets:", err)
         );
 
         const unsubPrefs = onSnapshot(
           doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'preferences'), 
-          (doc) => { if (doc.exists()) setPreferences(doc.data()); },
+          (doc) => { 
+            if (doc.exists()) {
+              const data = doc.data();
+              setPreferences(data);
+              safeLocalSet('cashly_prefs', data);
+            }
+          },
           err => console.error("Error syncing preferences:", err)
         );
 
@@ -548,7 +578,7 @@
                             <PlanningView transactions={monthTransactions} budgets={budgets.filter(b=>activeWalletId==='all'||b.walletId==='all'||b.walletId===activeWalletId)} goals={goals} currency={activeWallet.currency} formatCurrency={formatCurrency} onAddBudget={() => {vibrate(); setBudgetModalData(true)}} onEditBudget={(b) => {vibrate(); setBudgetModalData(b)}} onDeleteBudget={(id) => setBudgetToDelete(id)} onAddGoal={() => {vibrate(); setIsAddGoalOpen(true)}} onFundGoal={(g) => {vibrate(); setIsFundGoalOpen(g)}} wallets={wallets} activeWalletId={activeWalletId} />
                           )}
                           {currentTab === 'settings' && (
-                            <SettingsView user={user} wallets={wallets} prefs={preferences || {}} setPref={updatePreference} onAddWallet={() => {vibrate(); setIsAddWalletOpen(true)}} onDeleteWallet={(id) => { deleteFromFirebase('wallets', id); if(activeWalletId === id) setActiveWalletId('all'); }} onLogout={() => {vibrate(); auth ? signOut(auth) : setAuthMode('welcome')}} onEnableSecurity={() => {vibrate(); setIsPinSetupOpen(true)}} onExport={handleExport} />
+                            <SettingsView user={user} wallets={wallets} prefs={preferences || {}} setPref={updatePreference} onAddWallet={() => {vibrate(); setIsAddWalletOpen(true)}} onDeleteWallet={(id) => { deleteFromFirebase('wallets', id); if(activeWalletId === id) setActiveWalletId('all'); }} onLogout={handleLogout} onEnableSecurity={() => {vibrate(); setIsPinSetupOpen(true)}} onExport={handleExport} />
                           )}
                         </div>
 
