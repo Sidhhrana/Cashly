@@ -15,9 +15,9 @@ export const WalletCarousel = ({ onAddWallet }) => {
   const cardRefs = useRef({});
   const isProgrammaticScroll = useRef(false);
 
-  // All cards: Net Worth + Individual Wallets
+  // All cards: Total Money + Individual Wallets
   const allCards = [
-    { id: 'all', name: 'Net Worth', currency: preferences?.baseCurrency || 'INR', color: 'emerald', isNetWorth: true },
+    { id: 'all', name: 'Total Money', currency: preferences?.baseCurrency || 'INR', color: 'emerald', isNetWorth: true },
     ...wallets
   ];
 
@@ -161,7 +161,7 @@ export const WalletCarousel = ({ onAddWallet }) => {
               {/* Balance Readout */}
               <div className="relative z-10 pt-1">
                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">
-                  {card.isNetWorth ? 'Total Net Worth' : 'Account Balance'}
+                  {card.isNetWorth ? 'Total Money' : 'Account Balance'}
                 </p>
                 <h2 className="text-2xl font-black text-white tabular-nums tracking-tight font-mono">
                   {formatCurrency(cardBal, card.currency)}

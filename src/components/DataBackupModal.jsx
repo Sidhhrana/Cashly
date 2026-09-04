@@ -508,7 +508,7 @@ export const DataBackupModal = ({ isOpen, onClose }) => {
                     </div>
 
                     <div className="bg-black/40 rounded-2xl p-3 border border-white/5">
-                      <p className="text-[10px] uppercase font-bold text-gray-400">💰 Backup Net Worth</p>
+                      <p className="text-[10px] uppercase font-bold text-gray-400">💰 Total Money</p>
                       <p className="text-base font-extrabold text-emerald-400 mt-0.5 font-mono">
                         {formatCurrency(backupAnalysis.netWorth, backupAnalysis.currency)}
                       </p>

@@ -82,7 +82,7 @@ export const DynamicIsland = ({ onOpenQuickLog }) => {
 
           {/* Quick Balance */}
           <div className="text-center">
-            <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Net Worth</p>
+            <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Total Money</p>
             <p className="text-xs font-extrabold text-emerald-400 font-mono">
               {formatCurrency(totalBalance, activeWallet.currency)}
             </p>

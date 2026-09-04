@@ -19,7 +19,7 @@ export const WalletCardSection = ({ onEditBalance, onOpenAddWallet }) => {
         
         <div className="flex items-center justify-between">
           <span className="text-xs font-semibold uppercase tracking-wider text-purple-300/80">
-            Total Net Worth
+            Total Money
           </span>
           <span className="text-xs font-medium text-purple-200/60 font-mono">
             {wallets.length} Accounts
