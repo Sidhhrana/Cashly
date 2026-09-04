@@ -4,7 +4,7 @@ import { useFinancials, WALLET_COLORS, vibrate } from '../context/FinancialConte
 export const AddWalletModal = ({ isOpen, onClose }) => {
   const { addWallet } = useFinancials();
   const [name, setName] = useState('');
-  const [currency, setCurrency] = useState('USD');
+  const [currency, setCurrency] = useState('INR');
   const [selectedColor, setSelectedColor] = useState('emerald');
 
   if (!isOpen) return null;
@@ -39,11 +39,11 @@ export const AddWalletModal = ({ isOpen, onClose }) => {
           onChange={e => setCurrency(e.target.value)} 
           className="w-full bg-[#2C2C2E] text-white rounded-2xl px-4 py-3.5 font-bold border border-gray-700 outline-none text-sm"
         >
+          <option value="INR">INR (₹)</option>
           <option value="USD">USD ($)</option>
           <option value="EUR">EUR (€)</option>
           <option value="GBP">GBP (£)</option>
           <option value="JPY">JPY (¥)</option>
-          <option value="INR">INR (₹)</option>
         </select>
 
         {/* Color Palette Theme Picker */}

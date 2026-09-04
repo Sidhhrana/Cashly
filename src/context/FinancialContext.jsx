@@ -55,8 +55,8 @@ export const CATEGORIES = {
 };
 
 const DEFAULT_WALLETS = [
-  { id: 'w1', name: 'Main Wallet', currency: 'USD', balance: 0, color: 'emerald', iconString: 'Wallet' },
-  { id: 'w2', name: 'Savings Vault', currency: 'USD', balance: 0, color: 'indigo', iconString: 'Landmark' },
+  { id: 'w1', name: 'Main Wallet', currency: 'INR', balance: 0, color: 'emerald', iconString: 'Wallet' },
+  { id: 'w2', name: 'Savings Vault', currency: 'INR', balance: 0, color: 'indigo', iconString: 'Landmark' },
 ];
 
 const safeGet = (key, fallback) => {
@@ -87,17 +87,19 @@ export const vibrate = (type = 'light') => {
   }
 };
 
-export const formatCurrency = (amount, currencyCode = 'USD') => {
+export const formatCurrency = (amount, currencyCode = 'INR') => {
   try {
-    const locale = currencyCode === 'INR' ? 'en-IN' : 'en-US';
+    const targetCurr = currencyCode || 'INR';
+    const locale = targetCurr === 'INR' ? 'en-IN' : 'en-US';
     return new Intl.NumberFormat(locale, { 
       style: 'currency', 
-      currency: currencyCode || 'USD', 
+      currency: targetCurr, 
       minimumFractionDigits: 0, 
       maximumFractionDigits: 2 
     }).format(amount || 0);
   } catch (e) {
-    return `${currencyCode === 'INR' ? '₹' : '$'}${parseFloat(amount || 0).toFixed(2)}`;
+    const targetCurr = currencyCode || 'INR';
+    return `${targetCurr === 'INR' ? '₹' : '$'}${parseFloat(amount || 0).toFixed(2)}`;
   }
 };
 
@@ -110,9 +112,23 @@ export const FinancialProvider = ({ children }) => {
   const [budgets, setBudgets] = useState(() => safeGet('cashly_v3_budgets', []));
   const [goals, setGoals] = useState(() => safeGet('cashly_v3_goals', []));
   const [bills, setBills] = useState(() => safeGet('cashly_v3_bills', []));
-  const [preferences, setPreferences] = useState(() => safeGet('cashly_v3_prefs', { 
-    baseCurrency: 'USD', 
-    isDarkMode: true 
+  const [preferences, setPreferences] = useState(() => {
+    const saved = safeGet('cashly_v3_prefs', null);
+    if (!saved) {
+      return { baseCurrency: 'INR', isDarkMode: true };
+    }
+    return {
+      baseCurrency: saved.baseCurrency === 'USD' ? 'INR' : (saved.baseCurrency || 'INR'),
+      isDarkMode: saved.isDarkMode !== undefined ? saved.isDarkMode : true
+    };
+  });
+
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSyncedTime, setLastSyncedTime] = useState(() => safeGet('cashly_v3_last_synced', null));
+
+  const [weeklyBudgetConfig, setWeeklyBudgetConfigState] = useState(() => safeGet('cashly_v3_weekly_budget', {
+    targetMonthlyBudget: null,
+    customWeeklyTargets: {}
   }));
 
   const [budgetWarning, setBudgetWarning] = useState(null);
@@ -120,6 +136,10 @@ export const FinancialProvider = ({ children }) => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
 
   const syncTimeoutRef = useRef(null);
+
+  useEffect(() => {
+    if (lastSyncedTime) safeSet('cashly_v3_last_synced', lastSyncedTime);
+  }, [lastSyncedTime]);
 
   // Listen to Firebase Authentication & handle mobile redirect result
   useEffect(() => {
@@ -152,21 +172,69 @@ export const FinancialProvider = ({ children }) => {
       return;
     }
 
-    setWallets(DEFAULT_WALLETS);
-    setTransactions([]);
-    setBudgets([]);
-    setGoals([]);
-    setBills([]);
+    const localWallets = safeGet('cashly_v3_wallets', DEFAULT_WALLETS);
+    const localTransactions = safeGet('cashly_v3_transactions', []);
+    const localBudgets = safeGet('cashly_v3_budgets', []);
+    const localGoals = safeGet('cashly_v3_goals', []);
+    const localBills = safeGet('cashly_v3_bills', []);
+    const localWeekly = safeGet('cashly_v3_weekly_budget', { targetMonthlyBudget: null, customWeeklyTargets: {} });
+    const localPrefs = safeGet('cashly_v3_prefs', { baseCurrency: 'INR', isDarkMode: true });
 
     const userDocRef = doc(db, 'users', user.uid);
     const unsub = onSnapshot(userDocRef, (snap) => {
       if (snap.exists()) {
         const data = snap.data();
-        if (data.wallets) setWallets(data.wallets);
-        if (data.transactions) setTransactions(data.transactions);
-        if (data.budgets) setBudgets(data.budgets);
-        if (data.goals) setGoals(data.goals);
-        if (data.bills) setBills(data.bills);
+        const hasRemoteTransactions = Array.isArray(data.transactions) && data.transactions.length > 0;
+        
+        // If local transactions exist and remote doc is empty, migrates local data to Firestore to avoid data loss on first login
+        if (!hasRemoteTransactions && localTransactions.length > 0) {
+          const now = new Date().toISOString();
+          setDoc(userDocRef, {
+            wallets: localWallets,
+            transactions: localTransactions,
+            budgets: localBudgets,
+            goals: localGoals,
+            bills: localBills,
+            weeklyBudgetConfig: localWeekly,
+            preferences: localPrefs,
+            lastUpdated: now
+          }, { merge: true }).then(() => {
+            setLastSyncedTime(now);
+          }).catch(err => console.error("Cloud migration error:", err));
+
+          setWallets(localWallets);
+          setTransactions(localTransactions);
+          setBudgets(localBudgets);
+          setGoals(localGoals);
+          setBills(localBills);
+          setWeeklyBudgetConfigState(localWeekly);
+        } else {
+          if (data.wallets) setWallets(data.wallets);
+          if (data.transactions) setTransactions(data.transactions);
+          if (data.budgets) setBudgets(data.budgets);
+          if (data.goals) setGoals(data.goals);
+          if (data.bills) setBills(data.bills);
+          if (data.weeklyBudgetConfig) setWeeklyBudgetConfigState(data.weeklyBudgetConfig);
+          if (data.preferences) setPreferences(data.preferences);
+          if (data.lastUpdated) setLastSyncedTime(data.lastUpdated);
+        }
+      } else {
+        // Document doesn't exist yet on Firestore
+        if (localTransactions.length > 0 || localWallets.length > 0) {
+          const now = new Date().toISOString();
+          setDoc(userDocRef, {
+            wallets: localWallets,
+            transactions: localTransactions,
+            budgets: localBudgets,
+            goals: localGoals,
+            bills: localBills,
+            weeklyBudgetConfig: localWeekly,
+            preferences: localPrefs,
+            lastUpdated: now
+          }).then(() => {
+            setLastSyncedTime(now);
+          }).catch(err => console.error("Initial doc migration error:", err));
+        }
       }
     }, err => console.error("Firestore sync error:", err));
 
@@ -180,17 +248,24 @@ export const FinancialProvider = ({ children }) => {
 
     syncTimeoutRef.current = setTimeout(async () => {
       try {
+        setIsSyncing(true);
         const userDocRef = doc(db, 'users', user.uid);
+        const now = new Date().toISOString();
         await setDoc(userDocRef, {
           wallets: updatedState.wallets || wallets,
           transactions: updatedState.transactions || transactions,
           budgets: updatedState.budgets || budgets,
           goals: updatedState.goals || goals,
           bills: updatedState.bills || bills,
-          lastUpdated: new Date().toISOString()
+          weeklyBudgetConfig: updatedState.weeklyBudgetConfig || weeklyBudgetConfig,
+          preferences: updatedState.preferences || preferences,
+          lastUpdated: now
         }, { merge: true });
+        setLastSyncedTime(now);
       } catch (err) {
         console.error("Cloud Sync Error:", err);
+      } finally {
+        setIsSyncing(false);
       }
     }, 1200);
   };
@@ -201,6 +276,7 @@ export const FinancialProvider = ({ children }) => {
   useEffect(() => safeSet('cashly_v3_budgets', budgets), [budgets]);
   useEffect(() => safeSet('cashly_v3_goals', goals), [goals]);
   useEffect(() => safeSet('cashly_v3_bills', bills), [bills]);
+  useEffect(() => safeSet('cashly_v3_weekly_budget', weeklyBudgetConfig), [weeklyBudgetConfig]);
   useEffect(() => safeSet('cashly_v3_prefs', preferences), [preferences]);
 
   // Google Login
@@ -238,6 +314,7 @@ export const FinancialProvider = ({ children }) => {
     localStorage.removeItem('cashly_v3_budgets');
     localStorage.removeItem('cashly_v3_goals');
     localStorage.removeItem('cashly_v3_bills');
+    localStorage.removeItem('cashly_v3_weekly_budget');
 
     if (user && db) {
       try {
@@ -253,14 +330,20 @@ export const FinancialProvider = ({ children }) => {
     setBudgets([]);
     setGoals([]);
     setBills([]);
+    setWeeklyBudgetConfigState({ targetMonthlyBudget: null, customWeeklyTargets: {} });
     setActiveWalletId('all');
 
     alert("All financial ledger data has been completely wiped.");
   };
 
-  const activeWallet = activeWalletId === 'all'
-    ? { id: 'all', name: 'All Wallets', currency: preferences?.baseCurrency || 'USD', color: 'emerald' }
-    : wallets.find(w => w.id === activeWalletId) || wallets[0] || { name: 'Main Wallet', currency: 'USD', color: 'emerald' };
+  const rawActive = activeWalletId === 'all'
+    ? { id: 'all', name: 'All Wallets', currency: preferences?.baseCurrency || 'INR', color: 'emerald' }
+    : wallets.find(w => w.id === activeWalletId) || wallets[0] || { name: 'Main Wallet', currency: 'INR', color: 'emerald' };
+
+  const activeWallet = {
+    ...rawActive,
+    currency: rawActive?.currency || 'INR'
+  };
 
   const cycleWallet = () => {
     vibrate('light');
@@ -289,11 +372,11 @@ export const FinancialProvider = ({ children }) => {
   // Calculate Balance, Income & Expense
   const { totalIncome, totalExpense, balance } = useMemo(() => {
     let inc = 0, exp = 0, bal = 0;
-    const baseRate = EX_RATES[preferences?.baseCurrency || 'USD'] || 1;
+    const baseRate = EX_RATES[preferences?.baseCurrency || 'INR'] || 1;
 
     const convert = (amt, wId) => {
       if (activeWalletId === 'all') {
-        const wCurrency = wallets.find(w => w.id === wId)?.currency || 'USD';
+        const wCurrency = wallets.find(w => w.id === wId)?.currency || 'INR';
         return (amt * (EX_RATES[wCurrency] || 1)) / baseRate;
       }
       return amt;
@@ -322,11 +405,21 @@ export const FinancialProvider = ({ children }) => {
     return { totalIncome: inc, totalExpense: exp, balance: bal };
   }, [viewTransactions, monthTransactions, activeWalletId, wallets, preferences?.baseCurrency]);
 
+  // Update Weekly Budget Configuration
+  const updateWeeklyBudgetConfig = (newConfig) => {
+    vibrate('light');
+    setWeeklyBudgetConfigState(prev => {
+      const updated = typeof newConfig === 'function' ? newConfig(prev) : { ...prev, ...newConfig };
+      scheduleCloudSync({ weeklyBudgetConfig: updated });
+      return updated;
+    });
+  };
+
   // Add Transaction with Budget Warning Trigger & Success Haptics
   const addTransaction = (data) => {
     const newTx = {
-      id: `t-${Date.now()}`,
-      date: new Date().toISOString(),
+      id: data.id || `t-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      date: data.date || new Date().toISOString(),
       ...data,
       amount: parseFloat(data.amount)
     };
@@ -362,6 +455,22 @@ export const FinancialProvider = ({ children }) => {
     confetti({ particleCount: 30, spread: 50, origin: { y: 0.85 } });
   };
 
+  // Batch Add Transactions (e.g. from screenshot OCR parser)
+  const addBatchTransactions = (items) => {
+    if (!items || items.length === 0) return;
+    vibrate('success');
+    const newItems = items.map((data, idx) => ({
+      id: data.id || `t-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 7)}`,
+      date: data.date || new Date().toISOString(),
+      ...data,
+      amount: parseFloat(data.amount)
+    }));
+    const updatedTxList = [...newItems, ...transactions];
+    setTransactions(updatedTxList);
+    scheduleCloudSync({ transactions: updatedTxList });
+    confetti({ particleCount: 55, spread: 75, origin: { y: 0.75 } });
+  };
+
   // Delete Transaction
   const deleteTransaction = (id) => {
     vibrate('medium');
@@ -376,7 +485,7 @@ export const FinancialProvider = ({ children }) => {
     const newW = {
       id: `w-${Date.now()}`,
       name: data.name,
-      currency: data.currency || 'USD',
+      currency: data.currency || 'INR',
       color: data.color || 'emerald',
       iconString: data.iconString || 'Wallet',
       balance: 0
@@ -389,7 +498,7 @@ export const FinancialProvider = ({ children }) => {
   // Update Wallet
   const updateWallet = (id, data) => {
     vibrate('success');
-    const updated = wallets.map(w => w.id === id ? { ...w, ...data } : w);
+    const updated = wallets.map(w => w.id === id ? { ...w, ...data, currency: data.currency || w.currency || 'INR' } : w);
     setWallets(updated);
     scheduleCloudSync({ wallets: updated });
   };
@@ -461,15 +570,16 @@ export const FinancialProvider = ({ children }) => {
   // CSV Export
   const exportCSV = () => {
     vibrate('medium');
-    const headers = ["Date", "Type", "Category", "Amount", "Currency", "Note"];
+    const headers = ["Date", "Type", "Category", "Where Spent", "Amount", "Currency", "Note"];
     const rows = monthTransactions.map(t => {
       const catName = CATEGORIES[t.categoryId]?.name || (t.type === 'transfer' ? 'Transfer' : 'General');
       const wallet = wallets.find(w => w.id === t.walletId);
-      const curr = wallet ? wallet.currency : 'USD';
+      const curr = wallet ? wallet.currency : (preferences?.baseCurrency || 'INR');
       return [
         new Date(t.date).toLocaleDateString(),
         t.type,
         catName,
+        `"${(t.whereSpent || '').replace(/"/g, '""')}"`,
         t.amount,
         curr,
         `"${(t.note || '').replace(/"/g, '""')}"`
@@ -484,6 +594,225 @@ export const FinancialProvider = ({ children }) => {
     const monthName = currentMonth.toLocaleString('default', { month: 'long', year: 'numeric' });
     link.setAttribute("download", `Cashly_Export_${monthName.replace(/ /g, '_')}.csv`);
     link.click();
+  };
+
+  // Full Backup JSON Export
+  const exportFullBackupJSON = () => {
+    vibrate('medium');
+    const backupData = {
+      wallets,
+      transactions,
+      budgets,
+      goals,
+      bills,
+      weeklyBudgetConfig,
+      preferences,
+      metadata: {
+        version: '3.0.0',
+        exportedAt: new Date().toISOString(),
+        totalRecords: transactions.length,
+        netWorth: balance,
+        baseCurrency: preferences?.baseCurrency || 'INR'
+      }
+    };
+
+    const jsonString = JSON.stringify(backupData, null, 2);
+    const blob = new Blob([jsonString], { type: 'application/json;charset=utf-8;' });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    const dateStr = new Date().toISOString().split('T')[0];
+    link.setAttribute("download", `Cashly_Backup_INR_${dateStr}.json`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    return backupData;
+  };
+
+  // Full Backup JSON Import with Smart Merge
+  const importFullBackupJSON = async (rawBackupData, mode = 'merge') => {
+    try {
+      const data = typeof rawBackupData === 'string' ? JSON.parse(rawBackupData) : rawBackupData;
+      if (!data || typeof data !== 'object') {
+        throw new Error('Invalid backup file structure');
+      }
+
+      const incomingTransactions = Array.isArray(data.transactions) ? data.transactions : [];
+      const incomingWallets = Array.isArray(data.wallets) ? data.wallets : [];
+      const incomingBudgets = Array.isArray(data.budgets) ? data.budgets : [];
+      const incomingGoals = Array.isArray(data.goals) ? data.goals : [];
+      const incomingBills = Array.isArray(data.bills) ? data.bills : [];
+      const incomingWeeklyConfig = data.weeklyBudgetConfig || null;
+      const incomingPrefs = data.preferences || null;
+
+      let mergedWallets = [];
+      let mergedTransactions = [];
+      let mergedBudgets = [];
+      let mergedGoals = [];
+      let mergedBills = [];
+      let mergedWeeklyConfig = weeklyBudgetConfig;
+      let importedTxCount = 0;
+      let importedWalletCount = 0;
+
+      if (mode === 'replace') {
+        mergedWallets = (incomingWallets.length > 0 ? incomingWallets : DEFAULT_WALLETS).map(w => ({
+          ...w,
+          currency: w.currency || 'INR'
+        }));
+        mergedTransactions = incomingTransactions;
+        mergedBudgets = incomingBudgets;
+        mergedGoals = incomingGoals;
+        mergedBills = incomingBills;
+        mergedWeeklyConfig = incomingWeeklyConfig || { targetMonthlyBudget: null, customWeeklyTargets: {} };
+        if (incomingPrefs) {
+          setPreferences(incomingPrefs);
+          safeSet('cashly_v3_prefs', incomingPrefs);
+        }
+        importedTxCount = mergedTransactions.length;
+        importedWalletCount = mergedWallets.length;
+      } else {
+        // Smart Merge Mode
+        // 1. Wallets merge: keeps existing wallets, adds new wallets from backup that don't exist by ID
+        const existingWalletIds = new Set(wallets.map(w => String(w.id)));
+        const newWalletsToAdd = incomingWallets
+          .filter(w => !existingWalletIds.has(String(w.id)))
+          .map(w => ({ ...w, currency: w.currency || 'INR' }));
+        mergedWallets = [...wallets, ...newWalletsToAdd];
+        importedWalletCount = newWalletsToAdd.length;
+
+        // 2. Transactions merge: deduplicates by id or matching date+amount+whereSpent
+        const existingTxIds = new Set(transactions.map(t => String(t.id)).filter(Boolean));
+        const makeKey = (t) => `${t.date || ''}_${Number(t.amount || 0).toFixed(2)}_${(t.whereSpent || '').trim().toLowerCase()}`;
+        const existingTxKeys = new Set(transactions.map(makeKey));
+
+        const newTxToAdd = [];
+        for (const t of incomingTransactions) {
+          const key = makeKey(t);
+          if ((t.id && existingTxIds.has(String(t.id))) || existingTxKeys.has(key)) {
+            continue; // Deduplicate
+          }
+          newTxToAdd.push(t);
+          if (t.id) existingTxIds.add(String(t.id));
+          existingTxKeys.add(key);
+        }
+        mergedTransactions = [...newTxToAdd, ...transactions].sort((a, b) => new Date(b.date) - new Date(a.date));
+        importedTxCount = newTxToAdd.length;
+
+        // 3. Budgets merge
+        const existingBudgetCatIds = new Set(budgets.map(b => b.categoryId || b.id));
+        const newBudgetsToAdd = incomingBudgets.filter(b => !existingBudgetCatIds.has(b.categoryId || b.id));
+        mergedBudgets = [...budgets, ...newBudgetsToAdd];
+
+        // 4. Goals merge
+        const existingGoalIds = new Set(goals.map(g => g.id));
+        const newGoalsToAdd = incomingGoals.filter(g => !existingGoalIds.has(g.id));
+        mergedGoals = [...goals, ...newGoalsToAdd];
+
+        // 5. Bills merge
+        const existingBillIds = new Set(bills.map(b => b.id));
+        const newBillsToAdd = incomingBills.filter(b => !existingBillIds.has(b.id));
+        mergedBills = [...bills, ...newBillsToAdd];
+
+        // 6. WeeklyBudgetConfig merge
+        if (incomingWeeklyConfig) {
+          mergedWeeklyConfig = {
+            targetMonthlyBudget: incomingWeeklyConfig.targetMonthlyBudget ?? weeklyBudgetConfig.targetMonthlyBudget,
+            customWeeklyTargets: {
+              ...(weeklyBudgetConfig.customWeeklyTargets || {}),
+              ...(incomingWeeklyConfig.customWeeklyTargets || {})
+            }
+          };
+        }
+      }
+
+      // Update state
+      setWallets(mergedWallets);
+      setTransactions(mergedTransactions);
+      setBudgets(mergedBudgets);
+      setGoals(mergedGoals);
+      setBills(mergedBills);
+      setWeeklyBudgetConfigState(mergedWeeklyConfig);
+
+      // Persist all to localStorage
+      safeSet('cashly_v3_wallets', mergedWallets);
+      safeSet('cashly_v3_transactions', mergedTransactions);
+      safeSet('cashly_v3_budgets', mergedBudgets);
+      safeSet('cashly_v3_goals', mergedGoals);
+      safeSet('cashly_v3_bills', mergedBills);
+      safeSet('cashly_v3_weekly_budget', mergedWeeklyConfig);
+
+      // If user is logged in and db exists: immediately triggers cloud sync with Firestore
+      if (user && db) {
+        setIsSyncing(true);
+        const userDocRef = doc(db, 'users', user.uid);
+        const syncTimestamp = new Date().toISOString();
+        await setDoc(userDocRef, {
+          wallets: mergedWallets,
+          transactions: mergedTransactions,
+          budgets: mergedBudgets,
+          goals: mergedGoals,
+          bills: mergedBills,
+          weeklyBudgetConfig: mergedWeeklyConfig,
+          preferences: incomingPrefs && mode === 'replace' ? incomingPrefs : preferences,
+          lastUpdated: syncTimestamp
+        }, { merge: true });
+        setLastSyncedTime(syncTimestamp);
+        setIsSyncing(false);
+      }
+
+      vibrate('success');
+      return {
+        success: true,
+        importedCounts: {
+          transactions: importedTxCount,
+          wallets: importedWalletCount
+        }
+      };
+    } catch (err) {
+      console.error("Backup import error:", err);
+      vibrate('warning');
+      setIsSyncing(false);
+      return {
+        success: false,
+        error: err.message || 'Failed to import backup'
+      };
+    }
+  };
+
+  // Immediate Cloud Sync Manual Trigger
+  const syncWithCloud = async () => {
+    if (!user || !db) {
+      return { success: false, error: 'User not logged in or database unavailable' };
+    }
+
+    setIsSyncing(true);
+    vibrate('light');
+    try {
+      const userDocRef = doc(db, 'users', user.uid);
+      const now = new Date().toISOString();
+
+      await setDoc(userDocRef, {
+        wallets,
+        transactions,
+        budgets,
+        goals,
+        bills,
+        weeklyBudgetConfig,
+        preferences,
+        lastUpdated: now
+      }, { merge: true });
+
+      setLastSyncedTime(now);
+      vibrate('success');
+      return { success: true, timestamp: now };
+    } catch (err) {
+      console.error("Manual cloud sync failed:", err);
+      vibrate('warning');
+      return { success: false, error: err.message };
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   return (
@@ -511,7 +840,11 @@ export const FinancialProvider = ({ children }) => {
       totalIncome,
       totalExpense,
       balance,
+      totalBalance: balance,
+      weeklyBudgetConfig,
+      updateWeeklyBudgetConfig,
       addTransaction,
+      addBatchTransactions,
       deleteTransaction,
       addWallet,
       updateWallet,
@@ -521,7 +854,12 @@ export const FinancialProvider = ({ children }) => {
       fundGoal,
       addBill,
       updatePreference,
-      exportCSV
+      exportCSV,
+      exportFullBackupJSON,
+      importFullBackupJSON,
+      syncWithCloud,
+      lastSyncedTime,
+      isSyncing
     }}>
       {children}
     </FinancialContext.Provider>

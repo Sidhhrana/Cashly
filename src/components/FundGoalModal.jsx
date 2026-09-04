@@ -30,7 +30,7 @@ export const FundGoalModal = ({ goal, onClose }) => {
         </div>
 
         <div className="flex items-center justify-center text-4xl font-extrabold text-white bg-[#2C2C2E] p-5 rounded-3xl border border-gray-700">
-          <span className="text-gray-500 mr-2 text-2xl">$</span>
+          <span className="text-gray-500 mr-2 text-2xl">₹</span>
           <input 
             type="text" 
             inputMode="decimal" 

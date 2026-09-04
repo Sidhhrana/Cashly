@@ -39,7 +39,7 @@ export const AddGoalModal = ({ isOpen, onClose }) => {
           inputMode="decimal" 
           value={target} 
           onChange={e => setTarget(e.target.value.replace(/[^0-9.]/g, ''))} 
-          placeholder="Target Amount ($)" 
+          placeholder="Target Amount (₹)" 
           className="w-full bg-[#2C2C2E] text-white rounded-2xl px-4 py-3.5 font-bold border border-gray-700 outline-none text-sm font-mono" 
         />
 

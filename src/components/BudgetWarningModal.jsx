@@ -58,8 +58,8 @@ export const BudgetWarningModal = ({ warning, onClose }) => {
           {/* Progress Meter Bar */}
           <div className="space-y-1.5 bg-[#2C2C2E]/70 p-3.5 rounded-2xl border border-gray-800">
             <div className="flex justify-between text-xs font-mono">
-              <span className="text-gray-400 font-bold">Spent: {formatCurrency(warning.currentTotal, 'USD')}</span>
-              <span className="text-gray-400 font-bold">Limit: {formatCurrency(warning.limit, 'USD')}</span>
+              <span className="text-gray-400 font-bold">Spent: {formatCurrency(warning.currentTotal)}</span>
+              <span className="text-gray-400 font-bold">Limit: {formatCurrency(warning.limit)}</span>
             </div>
             <div className="w-full h-3 bg-gray-800 rounded-full overflow-hidden p-0.5">
               <div 

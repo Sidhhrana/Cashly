@@ -38,7 +38,7 @@ export const AddBillModal = ({ isOpen, onClose }) => {
           inputMode="decimal" 
           value={amount} 
           onChange={e => setAmount(e.target.value.replace(/[^0-9.]/g, ''))} 
-          placeholder="Bill Amount ($)" 
+          placeholder="Bill Amount (₹)" 
           className="w-full bg-[#2C2C2E] text-white rounded-2xl px-4 py-3.5 font-bold border border-gray-700 outline-none text-sm font-mono" 
         />
 

@@ -67,3 +67,16 @@
   animation: wave 8s linear infinite;
   will-change: transform;
 }
+
+/* OCR Laser Scanning Animation */
+@keyframes laserScan {
+  0% { top: 0%; opacity: 0.8; }
+  50% { top: 96%; opacity: 1; }
+  100% { top: 0%; opacity: 0.8; }
+}
+
+.animate-laser-scan {
+  animation: laserScan 2.2s ease-in-out infinite;
+  will-change: top;
+}
+

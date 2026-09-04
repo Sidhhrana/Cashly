@@ -17,19 +17,19 @@ export const WalletCarousel = ({ onAddWallet }) => {
 
   // All cards: Net Worth + Individual Wallets
   const allCards = [
-    { id: 'all', name: 'Net Worth', currency: preferences?.baseCurrency || 'USD', color: 'emerald', isNetWorth: true },
+    { id: 'all', name: 'Net Worth', currency: preferences?.baseCurrency || 'INR', color: 'emerald', isNetWorth: true },
     ...wallets
   ];
 
   // Calculate specific wallet balance or Net Worth
   const getCardBalance = (card) => {
-    const baseCurrency = preferences?.baseCurrency || 'USD';
+    const baseCurrency = preferences?.baseCurrency || 'INR';
     const baseRate = EX_RATES[baseCurrency] || 1;
 
     if (card.isNetWorth) {
       let net = 0;
       transactions.forEach(t => {
-        const wCurrency = wallets.find(w => w.id === t.walletId)?.currency || 'USD';
+        const wCurrency = wallets.find(w => w.id === t.walletId)?.currency || 'INR';
         const converted = (t.amount * (EX_RATES[wCurrency] || 1)) / baseRate;
         if (t.type === 'income') net += converted;
         if (t.type === 'expense') net -= converted;

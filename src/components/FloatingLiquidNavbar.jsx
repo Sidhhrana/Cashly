@@ -1,5 +1,5 @@
-import React, { useRef, useEffect, useState } from 'react';
-import { List, PieChart, Target, Settings, Plus } from 'lucide-react';
+import React from 'react';
+import { List, CalendarDays, PieChart, Target, Settings, Plus } from 'lucide-react';
 import { vibrate } from '../context/FinancialContext';
 
 export const FloatingLiquidNavbar = ({ 
@@ -8,39 +8,30 @@ export const FloatingLiquidNavbar = ({
   onOpenAddTx, 
   hasNotifications 
 }) => {
-  const tabs = [
-    { id: 'transactions', label: 'Records', icon: List, side: 'left' },
-    { id: 'analytics', label: 'Analytics', icon: PieChart, side: 'left' },
-    { id: 'planning', label: 'Planning', icon: Target, side: 'right' },
-    { id: 'settings', label: 'Settings', icon: Settings, side: 'right', hasBadge: hasNotifications }
+  const leftTabs = [
+    { id: 'transactions', label: 'Records', icon: List },
+    { id: 'weekly', label: 'Weekly', icon: CalendarDays }
   ];
 
-  // Tab index mapping
-  const getIndex = (tabId) => {
-    switch (tabId) {
-      case 'transactions': return 0;
-      case 'analytics': return 1;
-      case 'planning': return 2;
-      case 'settings': return 3;
-      default: return 0;
-    }
-  };
-
-  const activeIndex = getIndex(currentTab);
+  const rightTabs = [
+    { id: 'analytics', label: 'Analytics', icon: PieChart },
+    { id: 'planning', label: 'Planning', icon: Target },
+    { id: 'settings', label: 'Settings', icon: Settings, hasBadge: hasNotifications }
+  ];
 
   return (
-    <div className="pointer-events-auto relative inline-flex items-center gap-1 px-3 py-2 rounded-full liquid-glass shadow-2xl border border-white/20 animate-spring-up">
+    <div className="pointer-events-auto relative inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-full liquid-glass shadow-2xl border border-white/20 animate-spring-up">
       
-      {/* Left Tabs (Records, Analytics) */}
+      {/* Left Tabs (Records, Weekly) */}
       <div className="flex items-center gap-1 relative z-10">
-        {tabs.slice(0, 2).map((item, idx) => {
+        {leftTabs.map((item) => {
           const Icon = item.icon;
           const isActive = currentTab === item.id;
           return (
             <button
               key={item.id}
               onClick={() => { vibrate(); setCurrentTab(item.id); }}
-              className={`relative flex items-center justify-center w-11 h-11 rounded-full transition-colors duration-200 active:scale-90 ${
+              className={`relative flex items-center justify-center w-10 h-10 sm:w-11 sm:h-11 rounded-full transition-colors duration-200 active:scale-90 ${
                 isActive ? 'text-white font-bold' : 'text-gray-400 hover:text-white'
               }`}
               title={item.label}
@@ -56,26 +47,26 @@ export const FloatingLiquidNavbar = ({
       </div>
 
       {/* Center Elevated Floating Plus (+) FAB */}
-      <div className="px-1 relative z-20">
+      <div className="px-0.5 sm:px-1 relative z-20">
         <button
           onClick={() => { vibrate(); onOpenAddTx(); }}
-          className="w-12 h-12 rounded-full bg-gradient-to-tr from-emerald-500 to-teal-400 text-white shadow-lg shadow-emerald-500/40 flex items-center justify-center hover:scale-110 active:scale-90 transition-all duration-300"
+          className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-gradient-to-tr from-emerald-500 to-teal-400 text-white shadow-lg shadow-emerald-500/40 flex items-center justify-center hover:scale-110 active:scale-90 transition-all duration-300"
           title="Add Log"
         >
-          <Plus className="w-7 h-7 stroke-[2.5]" />
+          <Plus className="w-6 h-6 sm:w-7 sm:h-7 stroke-[2.5]" />
         </button>
       </div>
 
-      {/* Right Tabs (Planning, Settings) */}
+      {/* Right Tabs (Analytics, Planning, Settings) */}
       <div className="flex items-center gap-1 relative z-10">
-        {tabs.slice(2, 4).map((item, idx) => {
+        {rightTabs.map((item) => {
           const Icon = item.icon;
           const isActive = currentTab === item.id;
           return (
             <button
               key={item.id}
               onClick={() => { vibrate(); setCurrentTab(item.id); }}
-              className={`relative flex items-center justify-center w-11 h-11 rounded-full transition-colors duration-200 active:scale-90 ${
+              className={`relative flex items-center justify-center w-10 h-10 sm:w-11 sm:h-11 rounded-full transition-colors duration-200 active:scale-90 ${
                 isActive ? 'text-white font-bold' : 'text-gray-400 hover:text-white'
               }`}
               title={item.label}

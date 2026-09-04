@@ -44,7 +44,7 @@ export const DynamicIsland = ({ onOpenQuickLog }) => {
             </div>
             <div>
               <p className="text-xs font-extrabold text-white line-clamp-1">
-                {eventNotification.title || 'Transaction Saved'}
+                {eventNotification.whereSpent?.trim() || eventNotification.note?.trim() || (eventNotification.type === 'income' ? 'Income Received' : 'Expense Recorded')}
               </p>
               <p className="text-[10px] font-semibold text-gray-400">
                 {eventNotification.type === 'income' ? 'Income Logged' : 'Expense Recorded'}

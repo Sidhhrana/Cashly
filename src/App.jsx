@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { FinancialProvider, useFinancials, formatCurrency, vibrate } from './context/FinancialContext';
 import { RecordsView } from './components/RecordsView';
+import { WeeklyBudgetView } from './components/WeeklyBudgetView';
 import { AnalyticsView } from './components/AnalyticsView';
 import { PlanningView } from './components/PlanningView';
 import { SettingsView } from './components/SettingsView';
@@ -17,6 +18,8 @@ import { FundGoalModal } from './components/FundGoalModal';
 import { NotificationsModal } from './components/NotificationsModal';
 import { AddBillModal } from './components/AddBillModal';
 import { BudgetWarningModal } from './components/BudgetWarningModal';
+import { ScreenshotImportModal } from './components/ScreenshotImportModal';
+import { DataBackupModal } from './components/DataBackupModal';
 
 import { 
   Bell, ChevronLeft, ChevronRight, TrendingUp, TrendingDown 
@@ -38,6 +41,7 @@ function MainAppContent() {
 
   // Modals
   const [isAddTxOpen, setIsAddTxOpen] = useState(false);
+  const [isImportScreenshotOpen, setIsImportScreenshotOpen] = useState(false);
   const [isAddWalletOpen, setIsAddWalletOpen] = useState(false);
   const [editingWallet, setEditingWallet] = useState(null);
   const [isAddBudgetOpen, setIsAddBudgetOpen] = useState(false);
@@ -45,8 +49,9 @@ function MainAppContent() {
   const [fundingGoal, setFundingGoal] = useState(null);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isAddBillOpen, setIsAddBillOpen] = useState(false);
+  const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
 
-  const isAnyModalOpen = isAddTxOpen || isAddWalletOpen || !!editingWallet || isAddBudgetOpen || isAddGoalOpen || !!fundingGoal || isNotifOpen || isAddBillOpen || !!budgetWarning;
+  const isAnyModalOpen = isAddTxOpen || isImportScreenshotOpen || isAddWalletOpen || !!editingWallet || isAddBudgetOpen || isAddGoalOpen || !!fundingGoal || isNotifOpen || isAddBillOpen || !!budgetWarning || isBackupModalOpen;
 
   return (
     <div className="fixed inset-0 bg-black flex items-center justify-center font-sans overflow-hidden p-0 sm:p-4 touch-none">
@@ -62,7 +67,15 @@ function MainAppContent() {
           {/* Top Bar with Brand & Notification Bell */}
           <div className="flex justify-between items-center px-6 mb-1 relative z-10">
             <span className="font-extrabold text-sm tracking-wide text-white">
-              {currentTab === 'settings' ? 'Settings' : 'Cashly'}
+              {currentTab === 'settings' 
+                ? 'Settings' 
+                : currentTab === 'weekly' 
+                  ? 'Weekly Budget' 
+                  : currentTab === 'analytics' 
+                    ? 'Analytics' 
+                    : currentTab === 'planning' 
+                      ? 'Planning' 
+                      : 'Cashly'}
             </span>
 
             {/* Notification Bell */}
@@ -137,7 +150,13 @@ function MainAppContent() {
         {/* Tab View Body with Overscroll Lock */}
         <div className="flex-1 overflow-y-auto overscroll-contain pb-32 no-scrollbar relative z-0 touch-pan-y">
           {currentTab === 'transactions' && (
-            <RecordsView onOpenAdd={() => setIsAddTxOpen(true)} />
+            <RecordsView 
+              onOpenAdd={() => setIsAddTxOpen(true)} 
+              onOpenImportScreenshot={() => setIsImportScreenshotOpen(true)}
+            />
+          )}
+          {currentTab === 'weekly' && (
+            <WeeklyBudgetView />
           )}
           {currentTab === 'analytics' && (
             <AnalyticsView />
@@ -153,6 +172,7 @@ function MainAppContent() {
             <SettingsView 
               onAddWallet={() => { vibrate(); setIsAddWalletOpen(true); }}
               onEditWallet={(w) => { vibrate(); setEditingWallet(w); }}
+              onOpenBackup={() => { vibrate(); setIsBackupModalOpen(true); }}
             />
           )}
         </div>
@@ -170,13 +190,29 @@ function MainAppContent() {
         )}
 
         {/* Top-Level Modal Sheets & Proactive Warning Popup */}
-        <AddTransactionModal isOpen={isAddTxOpen} onClose={() => setIsAddTxOpen(false)} />
+        <AddTransactionModal 
+          isOpen={isAddTxOpen} 
+          onClose={() => setIsAddTxOpen(false)} 
+          onOpenImportScreenshot={() => { setIsAddTxOpen(false); setIsImportScreenshotOpen(true); }}
+        />
+        <ScreenshotImportModal 
+          isOpen={isImportScreenshotOpen} 
+          onClose={() => setIsImportScreenshotOpen(false)} 
+        />
+        <DataBackupModal 
+          isOpen={isBackupModalOpen} 
+          onClose={() => setIsBackupModalOpen(false)} 
+        />
         <AddWalletModal isOpen={isAddWalletOpen} onClose={() => setIsAddWalletOpen(false)} />
         <EditWalletModal wallet={editingWallet} onClose={() => setEditingWallet(null)} />
         <AddBudgetModal isOpen={isAddBudgetOpen} onClose={() => setIsAddBudgetOpen(false)} />
         <AddGoalModal isOpen={isAddGoalOpen} onClose={() => setIsAddGoalOpen(false)} />
         <FundGoalModal goal={fundingGoal} onClose={() => setFundingGoal(null)} />
-        <NotificationsModal isOpen={isNotifOpen} onClose={() => setIsNotifOpen(false)} onAddBill={() => setIsAddBillOpen(true)} />
+        <NotificationsModal 
+          isOpen={isNotifOpen} 
+          onClose={() => setIsNotifOpen(false)} 
+          onAddBill={() => { setIsNotifOpen(false); setIsAddBillOpen(true); }} 
+        />
         <AddBillModal isOpen={isAddBillOpen} onClose={() => setIsAddBillOpen(false)} />
         
         {/* Proactive Budget Warning Popup */}

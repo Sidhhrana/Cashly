@@ -3,7 +3,7 @@ import { useFinancials, CATEGORIES, vibrate } from '../context/FinancialContext'
 import { 
   X, Coffee, Car, ShoppingBag, Film, FileText, Home, Heart, Book, 
   Repeat, Zap, DollarSign, Landmark, ArrowRightLeft, Wallet, Briefcase, 
-  Building2, TrendingUp, Coins, Gift 
+  Building2, TrendingUp, Coins, Gift, Sparkles 
 } from 'lucide-react';
 
 const ICON_MAP = {
@@ -27,16 +27,23 @@ const ICON_MAP = {
   other_income: DollarSign
 };
 
-export const AddTransactionModal = ({ isOpen, onClose }) => {
-  const { wallets, activeWalletId, addTransaction } = useFinancials();
+export const AddTransactionModal = ({ isOpen, onClose, onOpenImportScreenshot }) => {
+  const { wallets, activeWalletId, activeWallet, addTransaction } = useFinancials();
 
   const [type, setType] = useState('expense'); // 'expense' | 'income' | 'transfer'
   const [amount, setAmount] = useState('');
   const [selectedCategory, setSelectedCategory] = useState(null);
+  const [whereSpent, setWhereSpent] = useState('');
   const [note, setNote] = useState('');
   const [selectedWalletId, setSelectedWalletId] = useState('');
   const [fromWalletId, setFromWalletId] = useState('');
   const [toWalletId, setToWalletId] = useState('');
+
+  const currentCurrency = (type === 'transfer' 
+    ? wallets.find(w => w.id === fromWalletId)?.currency 
+    : wallets.find(w => w.id === selectedWalletId)?.currency) || activeWallet?.currency || 'INR';
+
+  const currencySymbol = currentCurrency === 'INR' ? '₹' : currentCurrency === 'EUR' ? '€' : currentCurrency === 'GBP' ? '£' : currentCurrency === 'JPY' ? '¥' : '$';
 
   useEffect(() => {
     if (isOpen) {
@@ -46,6 +53,7 @@ export const AddTransactionModal = ({ isOpen, onClose }) => {
       setToWalletId(wallets[1]?.id || wallets[0]?.id || '');
       setAmount('');
       setSelectedCategory(null);
+      setWhereSpent('');
       setNote('');
     }
   }, [isOpen, activeWalletId, wallets]);
@@ -67,6 +75,7 @@ export const AddTransactionModal = ({ isOpen, onClose }) => {
       walletId: selectedWalletId,
       fromWalletId,
       toWalletId,
+      whereSpent: whereSpent.trim(),
       note: note.trim()
     });
 
@@ -83,12 +92,25 @@ export const AddTransactionModal = ({ isOpen, onClose }) => {
         <div className="px-6 pt-5 pb-3 bg-[#1C1C1E] rounded-t-[2.5rem] border-b border-gray-800 flex flex-col gap-3 relative z-10">
           <div className="flex items-center justify-between">
             <h3 className="text-base font-extrabold text-white">Log Transaction</h3>
-            <button
-              onClick={onClose}
-              className="p-1.5 rounded-full bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-2">
+              {onOpenImportScreenshot && (
+                <button
+                  type="button"
+                  onClick={() => { vibrate('light'); onOpenImportScreenshot(); }}
+                  className="px-2.5 py-1 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 border border-emerald-500/30 text-xs font-bold transition-colors flex items-center gap-1.5 active:scale-95 shadow-sm"
+                  title="Scan screenshot or paste bank SMS"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Scan / SMS</span>
+                </button>
+              )}
+              <button
+                onClick={onClose}
+                className="p-1.5 rounded-full bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
           <div className="flex bg-[#2C2C2E] rounded-xl p-1 shadow-inner relative">
@@ -125,7 +147,7 @@ export const AddTransactionModal = ({ isOpen, onClose }) => {
           <div className="p-5 text-center bg-[#2C2C2E]/60 rounded-2xl border border-gray-800">
             <p className="text-gray-400 font-bold mb-1 uppercase tracking-widest text-[10px]">Enter Amount</p>
             <div className="flex items-center justify-center text-4xl font-extrabold text-white">
-              <span className="text-gray-500 mr-1 text-3xl">$</span>
+              <span className="text-gray-500 mr-1 text-3xl">{currencySymbol}</span>
               <input 
                 type="text" 
                 inputMode="decimal" 
@@ -222,6 +244,19 @@ export const AddTransactionModal = ({ isOpen, onClose }) => {
                   );
                 })}
               </div>
+            </div>
+          )}
+
+          {/* Simple where spent prompt */}
+          {type !== 'transfer' && (
+            <div className="bg-[#2C2C2E]/60 p-3 rounded-2xl border border-gray-800">
+              <input 
+                type="text" 
+                value={whereSpent} 
+                onChange={(e) => setWhereSpent(e.target.value)} 
+                placeholder={type === 'income' ? 'Where did you receive it from? (optional)' : 'Where did you spend it? (optional)'} 
+                className="w-full text-xs font-medium text-white bg-transparent outline-none placeholder-gray-500" 
+              />
             </div>
           )}
 

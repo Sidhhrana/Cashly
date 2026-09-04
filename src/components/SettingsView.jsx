@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useFinancials, WALLET_COLORS, vibrate } from '../context/FinancialContext';
 import { 
   User, Wallet, Plus, Trash2, Globe, Home, Bell, Download, 
-  HelpCircle, Info, ChevronRight, LogOut, Cloud, AlertTriangle, ShieldAlert, Edit3 
+  HelpCircle, Info, ChevronRight, LogOut, Cloud, AlertTriangle, ShieldAlert, Edit3,
+  Upload, RefreshCw, Database, FileSpreadsheet 
 } from 'lucide-react';
 
-export const SettingsView = ({ onAddWallet, onEditWallet }) => {
+export const SettingsView = ({ onAddWallet, onEditWallet, onOpenBackup }) => {
   const { 
     user,
     loginWithGoogle,
@@ -15,12 +16,25 @@ export const SettingsView = ({ onAddWallet, onEditWallet }) => {
     preferences, 
     updatePreference, 
     deleteWallet, 
-    exportCSV 
+    exportCSV,
+    exportFullBackupJSON,
+    syncWithCloud,
+    lastSyncedTime,
+    isSyncing 
   } = useFinancials();
 
   const [activeModal, setActiveModal] = useState(null);
   const [walletToDelete, setWalletToDelete] = useState(null);
   const [showWipeConfirm, setShowWipeConfirm] = useState(false);
+
+  const formatRelativeSyncTime = (isoString) => {
+    if (!isoString) return 'Just now';
+    const diffSeconds = Math.max(0, Math.floor((Date.now() - new Date(isoString).getTime()) / 1000));
+    if (diffSeconds < 60) return 'Just now';
+    if (diffSeconds < 3600) return `${Math.floor(diffSeconds / 60)}m ago`;
+    if (diffSeconds < 86400) return `${Math.floor(diffSeconds / 3600)}h ago`;
+    return new Date(isoString).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  };
 
   const SectionTitle = ({ children, danger }) => (
     <h3 className={`text-[11px] font-bold uppercase tracking-widest px-4 mb-2 mt-7 first:mt-0 ${
@@ -55,38 +69,54 @@ export const SettingsView = ({ onAddWallet, onEditWallet }) => {
       
       {/* Google User Profile or Login Card */}
       {user ? (
-        <div className="bg-[#1C1C1E] rounded-3xl p-5 shadow-sm border border-emerald-500/30 flex items-center justify-between gap-4 mb-6">
-          <div className="flex items-center gap-3.5 min-w-0">
-            {user.photoURL ? (
-              <img 
-                src={user.photoURL} 
-                alt="Avatar" 
-                className="w-12 h-12 rounded-full object-cover border-2 border-emerald-500 shadow-md"
-              />
-            ) : (
-              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-white font-bold text-lg">
-                {user.displayName ? user.displayName.charAt(0) : 'U'}
+        <div className="bg-[#1C1C1E] rounded-3xl p-5 shadow-sm border border-emerald-500/30 mb-6 space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3.5 min-w-0">
+              {user.photoURL ? (
+                <img 
+                  src={user.photoURL} 
+                  alt="Avatar" 
+                  className="w-12 h-12 rounded-full object-cover border-2 border-emerald-500 shadow-md flex-shrink-0"
+                />
+              ) : (
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
+                  {user.displayName ? user.displayName.charAt(0) : 'U'}
+                </div>
+              )}
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-base font-extrabold text-white truncate">
+                    {user.displayName || 'Google Account'}
+                  </h2>
+                  <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-400 text-[10px] font-bold border border-emerald-500/30 flex items-center gap-1">
+                    <span className={`w-1.5 h-1.5 rounded-full ${isSyncing ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'}`} />
+                    {isSyncing ? 'Syncing...' : 'Synced'}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-400 font-medium truncate">{user.email}</p>
+                <p className="text-[11px] text-gray-400 font-medium mt-0.5">
+                  Last synced: <span className="text-gray-300 font-semibold">{formatRelativeSyncTime(lastSyncedTime)}</span>
+                </p>
               </div>
-            )}
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <h2 className="text-base font-extrabold text-white truncate">
-                  {user.displayName || 'Google Account'}
-                </h2>
-                <span className="px-1.5 py-0.5 rounded-md bg-emerald-500/20 text-emerald-400 text-[9px] font-bold border border-emerald-500/30">
-                  Synced
-                </span>
-              </div>
-              <p className="text-xs text-gray-400 font-medium truncate">{user.email}</p>
             </div>
+
+            <button
+              onClick={logout}
+              className="p-2.5 rounded-2xl bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/20 transition-all active:scale-90 flex-shrink-0"
+              title="Log Out"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
 
+          {/* Prominent "Sync with Account" / "Sync Now" Button */}
           <button
-            onClick={logout}
-            className="p-2.5 rounded-2xl bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/20 transition-all active:scale-90"
-            title="Log Out"
+            onClick={() => { vibrate('medium'); syncWithCloud(); }}
+            disabled={isSyncing}
+            className="w-full py-3 px-4 rounded-2xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-400 font-extrabold text-xs flex items-center justify-center gap-2 transition-all active:scale-98 disabled:opacity-50 shadow-inner"
           >
-            <LogOut className="w-4 h-4" />
+            <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+            <span>{isSyncing ? 'Syncing with Google Cloud...' : 'Sync with Account (Sync Now)'}</span>
           </button>
         </div>
       ) : (
@@ -97,7 +127,7 @@ export const SettingsView = ({ onAddWallet, onEditWallet }) => {
             </div>
             <div>
               <h3 className="font-extrabold text-white text-sm">Cloud Account Sync</h3>
-              <p className="text-xs text-purple-200/70">Save transactions to your Google account</p>
+              <p className="text-xs text-purple-200/70">Sign in to enable automatic cloud backup</p>
             </div>
           </div>
 
@@ -200,7 +230,24 @@ export const SettingsView = ({ onAddWallet, onEditWallet }) => {
       {/* Tools & Export */}
       <SectionTitle>Data & Options</SectionTitle>
       <div className="bg-[#1C1C1E] rounded-3xl shadow-sm border border-gray-800/60 overflow-hidden divide-y divide-gray-800/40">
-        <Row icon={Download} color="bg-emerald-500" label="Export Ledger CSV" onClick={exportCSV} />
+        <Row 
+          icon={Download} 
+          color="bg-emerald-500" 
+          label="Export Full Backup (JSON)" 
+          onClick={exportFullBackupJSON} 
+        />
+        <Row 
+          icon={Database} 
+          color="bg-indigo-500" 
+          label="Backup & Restore Ledger" 
+          onClick={onOpenBackup} 
+        />
+        <Row 
+          icon={FileSpreadsheet} 
+          color="bg-teal-500" 
+          label="Export Ledger CSV" 
+          onClick={exportCSV} 
+        />
         <Row icon={HelpCircle} color="bg-blue-500" label="Help & Support" onClick={() => setActiveModal('Help')} />
         <Row icon={Info} color="bg-gray-700" label="About Cashly" onClick={() => setActiveModal('About')} />
       </div>
@@ -280,7 +327,7 @@ export const SettingsView = ({ onAddWallet, onEditWallet }) => {
 
             {activeModal === 'Currency' && (
               <div className="space-y-2">
-                {['USD', 'EUR', 'GBP', 'JPY', 'INR'].map(c => (
+                {['INR', 'USD', 'EUR', 'GBP', 'JPY'].map(c => (
                   <button 
                     key={c} 
                     onClick={() => { vibrate('light'); updatePreference('baseCurrency', c); setActiveModal(null); }} 
