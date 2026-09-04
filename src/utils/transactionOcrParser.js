@@ -125,33 +125,39 @@ export async function preprocessImageToCanvas(imageInput) {
     });
   }
 
-  // Scale down excessively large phone screenshots (> 1800px) for speed & memory
+  // Scale optimization for OCR:
+  // Screenshots < 1200px width (typical mobile resolution) are upscaled 1.5x-2x for crisp text
+  // Excessively large screenshots (> 2000px) are scaled down to 1800px for speed
   let { naturalWidth: width, naturalHeight: height } = img;
   if (!width || !height) {
     width = img.width || 1200;
     height = img.height || 1600;
   }
 
-  const maxDim = 1800;
-  if (width > maxDim || height > maxDim) {
-    if (width > height) {
-      height = Math.round((height * maxDim) / width);
-      width = maxDim;
-    } else {
-      width = Math.round((width * maxDim) / height);
-      height = maxDim;
-    }
+  let targetWidth = width;
+  let targetHeight = height;
+
+  if (width < 1200) {
+    const scale = Math.min(2.2, 1400 / width);
+    targetWidth = Math.round(width * scale);
+    targetHeight = Math.round(height * scale);
+  } else if (width > 2000) {
+    const scale = 1800 / width;
+    targetWidth = 1800;
+    targetHeight = Math.round(height * scale);
   }
 
   const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
+  canvas.width = targetWidth;
+  canvas.height = targetHeight;
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
 
   // Draw scaled image
-  ctx.drawImage(img, 0, 0, width, height);
+  ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
 
-  const imageData = ctx.getImageData(0, 0, width, height);
+  const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
   const data = imageData.data;
   const totalPixels = data.length / 4;
 
@@ -462,6 +468,101 @@ function isNoiseLine(line) {
 }
 
 /**
+ * Decode trailing amount from mobile transaction history lines.
+ * Handles:
+ * - Direct amounts with currency: ₹557.16, Rs 40, $20, 106 INR
+ * - Decimals with artifact prefix: 3557.16 -> 557.16
+ * - Six digits without decimal point (e.g. 355716 -> 557.16 where 3 is ₹ and .16 was lost by OCR)
+ * - Two/Three digits prefixed with corrupted Indian Rupee glyph (₹ -> 3, 2, R, X, z, Z, ?, >)
+ *   e.g. 340 -> 40, 235 -> 35, 320 -> 20, 2106 -> 106, 380 -> 80, 350 -> 50
+ * - Clean integers: 35, 40, 50, 100, 1250
+ */
+export function decodeTrailingAmount(rawToken) {
+  if (!rawToken) return null;
+  let s = rawToken.trim();
+  s = s.replace(/^[$€£₹]|Rs\.?|INR/i, '').trim();
+  s = s.replace(/^[RXzZ?>]/, '');
+
+  // 1. Explicit decimal: e.g. 557.16 or 3557.16
+  if (s.includes('.')) {
+    if (/^[32]\d{3,}\.\d{2}$/.test(s)) {
+      s = s.slice(1);
+    }
+    const val = parseFloat(s);
+    if (!isNaN(val) && val > 0) return val;
+  }
+
+  // 2. Six digits like 355716 (corrupted ₹ + 557.16 where decimal point was missed by OCR)
+  if (/^[32]\d{5}$/.test(s)) {
+    const digits = s.slice(1);
+    const withDec = digits.slice(0, -2) + '.' + digits.slice(-2);
+    return parseFloat(withDec);
+  }
+
+  // 3. Indian Rupee symbol prefix 3 or 2 before 2-3 digit integer: e.g. 340 -> 40, 235 -> 35, 320 -> 20, 2106 -> 106, 380 -> 80, 350 -> 50
+  if (/^[32](\d{2,3})$/.test(s)) {
+    return parseFloat(s.slice(1));
+  }
+
+  // 4. Clean integer or decimal: e.g. 35, 40, 50, 100, 1250
+  const cleanNum = parseFloat(s);
+  if (!isNaN(cleanNum) && cleanNum > 0) return cleanNum;
+
+  return null;
+}
+
+/**
+ * Mobile Transaction Feed Parser (Google Pay, PhonePe, Paytm, UPI, Apple Pay)
+ */
+export function parseMobileTransactionFeed(rawLines) {
+  const results = [];
+  const DATE_REGEX = /today|yesterday|\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b|\b\d{1,2}[/-]\d{1,2}\b/i;
+
+  for (let i = 0; i < rawLines.length; i++) {
+    const line = rawLines[i];
+    if (DATE_REGEX.test(line)) {
+      // Find preceding transaction line (within 1-2 lines back)
+      let txLine = '';
+      for (let j = i - 1; j >= Math.max(0, i - 2); j--) {
+        if (!DATE_REGEX.test(rawLines[j]) && !isNoiseLine(rawLines[j])) {
+          txLine = rawLines[j];
+          break;
+        }
+      }
+      if (!txLine) continue;
+
+      // Clean avatar glyph noise from start (e.g. "A Amazon Pay on Delivery 355716", "™ Mr Narender Nanwani 340")
+      let cleanTx = txLine.replace(/^[A-Za-z0-9™®©|~_()&+\-]{1,3}\s+(?=[A-Za-z])/, '').trim();
+
+      // Extract amount from end
+      const match = cleanTx.match(/(?:[$€£₹]|Rs\.?|INR)?\s*([0-9.,]+|[RXzZ?>32]\d{1,5}(?:\.\d{1,2})?)$/i);
+      if (match) {
+        const amt = decodeTrailingAmount(match[1]);
+        const merchant = cleanTx.replace(match[0], '').trim();
+        if (amt && merchant.length >= 2) {
+          const type = extractType(cleanTx, null);
+          const categoryId = matchCategory(merchant + ' ' + cleanTx, type);
+          const date = parseDate(line);
+
+          results.push({
+            id: `ocr-${Date.now()}-${results.length}-${Math.random().toString(36).substring(2, 6)}`,
+            amount: amt,
+            type,
+            categoryId,
+            whereSpent: merchant,
+            note: `${merchant} • ${line}`,
+            date,
+            confidence: 0.95
+          });
+        }
+      }
+    }
+  }
+
+  return results;
+}
+
+/**
  * Multi-Line Transaction Screenshot Parser:
  * Processes raw OCR text into individual transactions.
  */
@@ -471,6 +572,12 @@ export function parseTransactionText(rawText) {
   const rawLines = rawText.split(/\r?\n/).map(l => l.trim()).filter(l => !isNoiseLine(l));
   const results = [];
 
+  // Strategy 0: Mobile Transaction Feed (Google Pay, PhonePe, Paytm, UPI, Apple Pay)
+  const feedResults = parseMobileTransactionFeed(rawLines);
+  if (feedResults.length >= 2) {
+    return feedResults;
+  }
+
   // Find all lines that contain currency amounts
   const amountIndices = [];
   rawLines.forEach((line, idx) => {
@@ -479,6 +586,11 @@ export function parseTransactionText(rawText) {
       amountIndices.push({ idx, amt, line });
     }
   });
+
+  // If feed had 1 item and no structured amounts, return the feed item
+  if (amountIndices.length === 0 && feedResults.length > 0) {
+    return feedResults;
+  }
 
   // If no structured amounts found on individual lines, fallback to SMS/free-text mode
   if (amountIndices.length === 0) {

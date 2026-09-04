@@ -1,5 +1,5 @@
 import React from 'react';
-import { List, CalendarDays, PieChart, Target, Settings, Plus } from 'lucide-react';
+import { List, CalendarDays, PieChart, Settings, Plus } from 'lucide-react';
 import { vibrate } from '../context/FinancialContext';
 
 export const FloatingLiquidNavbar = ({ 
@@ -15,7 +15,6 @@ export const FloatingLiquidNavbar = ({
 
   const rightTabs = [
     { id: 'analytics', label: 'Analytics', icon: PieChart },
-    { id: 'planning', label: 'Planning', icon: Target },
     { id: 'settings', label: 'Settings', icon: Settings, hasBadge: hasNotifications }
   ];
 

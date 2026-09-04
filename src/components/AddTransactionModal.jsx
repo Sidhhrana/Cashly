@@ -3,7 +3,7 @@ import { useFinancials, CATEGORIES, vibrate } from '../context/FinancialContext'
 import { 
   X, Coffee, Car, ShoppingBag, Film, FileText, Home, Heart, Book, 
   Repeat, Zap, DollarSign, Landmark, ArrowRightLeft, Wallet, Briefcase, 
-  Building2, TrendingUp, Coins, Gift, Sparkles 
+  Building2, TrendingUp, Coins, Gift, Camera 
 } from 'lucide-react';
 
 const ICON_MAP = {
@@ -92,21 +92,20 @@ export const AddTransactionModal = ({ isOpen, onClose, onOpenImportScreenshot })
         <div className="px-6 pt-5 pb-3 bg-[#1C1C1E] rounded-t-[2.5rem] border-b border-gray-800 flex flex-col gap-3 relative z-10">
           <div className="flex items-center justify-between">
             <h3 className="text-base font-extrabold text-white">Log Transaction</h3>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               {onOpenImportScreenshot && (
                 <button
                   type="button"
                   onClick={() => { vibrate('light'); onOpenImportScreenshot(); }}
-                  className="px-2.5 py-1 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 border border-emerald-500/30 text-xs font-bold transition-colors flex items-center gap-1.5 active:scale-95 shadow-sm"
-                  title="Scan screenshot or paste bank SMS"
+                  className="p-1.5 rounded-full bg-gray-800/80 hover:bg-gray-700 text-gray-400 hover:text-emerald-400 border border-gray-700/50 transition-colors active:scale-95"
+                  title="Scan screenshot / receipt"
                 >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>Scan / SMS</span>
+                  <Camera className="w-4 h-4" />
                 </button>
               )}
               <button
                 onClick={onClose}
-                className="p-1.5 rounded-full bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors"
+                className="p-1.5 rounded-full bg-gray-800/80 hover:bg-gray-700 text-gray-400 hover:text-white border border-gray-700/50 transition-colors active:scale-95"
               >
                 <X className="w-4 h-4" />
               </button>

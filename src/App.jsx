@@ -3,7 +3,6 @@ import { FinancialProvider, useFinancials, formatCurrency, vibrate } from './con
 import { RecordsView } from './components/RecordsView';
 import { WeeklyBudgetView } from './components/WeeklyBudgetView';
 import { AnalyticsView } from './components/AnalyticsView';
-import { PlanningView } from './components/PlanningView';
 import { SettingsView } from './components/SettingsView';
 import { FloatingLiquidNavbar } from './components/FloatingLiquidNavbar';
 import { DynamicIsland } from './components/DynamicIsland';
@@ -73,9 +72,7 @@ function MainAppContent() {
                   ? 'Weekly Budget' 
                   : currentTab === 'analytics' 
                     ? 'Analytics' 
-                    : currentTab === 'planning' 
-                      ? 'Planning' 
-                      : 'Cashly'}
+                    : 'Cashly'}
             </span>
 
             {/* Notification Bell */}
@@ -160,13 +157,6 @@ function MainAppContent() {
           )}
           {currentTab === 'analytics' && (
             <AnalyticsView />
-          )}
-          {currentTab === 'planning' && (
-            <PlanningView 
-              onAddBudget={() => { vibrate(); setIsAddBudgetOpen(true); }}
-              onAddGoal={() => { vibrate(); setIsAddGoalOpen(true); }}
-              onFundGoal={(g) => { vibrate(); setFundingGoal(g); }}
-            />
           )}
           {currentTab === 'settings' && (
             <SettingsView 

@@ -3,7 +3,7 @@ import { useFinancials, CATEGORIES, EX_RATES, formatCurrency, vibrate } from '..
 import { 
   Coffee, Car, ShoppingBag, Film, FileText, Home, Heart, Book, 
   Repeat, Zap, DollarSign, Landmark, ArrowRightLeft, Rocket, Tag,
-  Search, X, RotateCcw, Store, Briefcase, Building2, Coins, Gift, Sparkles
+  Search, X, RotateCcw, Store, Briefcase, Building2, Coins, Gift
 } from 'lucide-react';
 
 const ICON_MAP = {
@@ -144,15 +144,6 @@ export const RecordsView = ({ onOpenAdd, onOpenImportScreenshot }) => {
               </button>
             )}
           </div>
-
-          <button
-            onClick={() => { vibrate('light'); onOpenImportScreenshot?.(); }}
-            className="px-3 py-2.5 bg-gradient-to-r from-emerald-500/20 to-teal-500/20 hover:from-emerald-500/30 hover:to-teal-500/30 text-emerald-300 border border-emerald-500/40 rounded-2xl text-xs font-bold transition-all flex items-center gap-1.5 flex-shrink-0 active:scale-95 shadow-sm"
-            title="Scan screenshot or paste bank SMS"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Scan / SMS</span>
-          </button>
         </div>
 
         {/* Category Filter Pills (All + all CATEGORIES) */}
@@ -220,19 +211,12 @@ export const RecordsView = ({ onOpenAdd, onOpenImportScreenshot }) => {
             <h3 className="text-lg font-black text-white mb-1">No activity logged yet</h3>
             <p className="text-xs font-medium text-gray-400 max-w-xs mx-auto">Your financial journey starts with a single step. Add an expense or income.</p>
           </div>
-          <div className="flex flex-wrap items-center justify-center gap-2.5">
+          <div className="flex items-center justify-center">
             <button 
               onClick={() => { vibrate(); onOpenAdd(); }} 
-              className="px-5 py-2.5 bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-lg active:scale-95 transition-all"
+              className="px-6 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-xs rounded-xl shadow-lg active:scale-95 transition-all"
             >
               Add First Entry
-            </button>
-            <button 
-              onClick={() => { vibrate(); onOpenImportScreenshot?.(); }} 
-              className="px-4 py-2.5 bg-[#2C2C2E] hover:bg-gray-700 text-emerald-400 font-bold text-xs rounded-xl border border-emerald-500/30 active:scale-95 transition-all flex items-center gap-1.5"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Scan Screenshot</span>
             </button>
           </div>
         </div>

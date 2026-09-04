@@ -127,6 +127,7 @@ export const FinancialProvider = ({ children }) => {
   const [lastSyncedTime, setLastSyncedTime] = useState(() => safeGet('cashly_v3_last_synced', null));
 
   const [weeklyBudgetConfig, setWeeklyBudgetConfigState] = useState(() => safeGet('cashly_v3_weekly_budget', {
+    targetWeeklyBudget: null,
     targetMonthlyBudget: null,
     customWeeklyTargets: {}
   }));

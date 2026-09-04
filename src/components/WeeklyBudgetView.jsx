@@ -78,7 +78,7 @@ export const WeeklyBudgetView = () => {
   // State for Target Budget Modal & Accordions
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [customTargetInput, setCustomTargetInput] = useState('');
-  const [configMode, setConfigMode] = useState('monthly'); // 'monthly' | 'weekly'
+  const [configMode, setConfigMode] = useState('weekly'); // 'weekly' (default) | 'monthly'
   const [expandedWeeks, setExpandedWeeks] = useState({}); // { [weekId]: boolean }
 
   // Sum of Category Budgets (fallback source)
@@ -86,16 +86,29 @@ export const WeeklyBudgetView = () => {
     return (budgets || []).reduce((acc, b) => acc + (Number(b.limit) || 0), 0);
   }, [budgets]);
 
-  // Target Monthly Budget with smart fallback hierarchy
-  const targetMonthlyBudget = useMemo(() => {
-    const configured = weeklyBudgetConfig?.targetMonthlyBudget;
-    if (configured !== null && configured !== undefined && Number(configured) > 0) {
-      return Number(configured);
+  // Target Weekly Budget (Primary first-class user setting)
+  const targetWeeklyBudget = useMemo(() => {
+    const configuredWeekly = weeklyBudgetConfig?.targetWeeklyBudget;
+    if (configuredWeekly !== null && configuredWeekly !== undefined && Number(configuredWeekly) > 0) {
+      return Number(configuredWeekly);
     }
-    if (budgetsSum > 0) return budgetsSum;
-    if (totalIncome > 0) return totalIncome;
-    return 1000;
+    const configuredMonthly = weeklyBudgetConfig?.targetMonthlyBudget;
+    if (configuredMonthly !== null && configuredMonthly !== undefined && Number(configuredMonthly) > 0) {
+      return Math.round(Number(configuredMonthly) / 4);
+    }
+    if (budgetsSum > 0) return Math.round(budgetsSum / 4);
+    if (totalIncome > 0) return Math.round(totalIncome / 4);
+    return 2500; // default ₹2,500 / week
   }, [weeklyBudgetConfig, budgetsSum, totalIncome]);
+
+  // Target Monthly Budget (calculated from weekly or explicit monthly)
+  const targetMonthlyBudget = useMemo(() => {
+    const configuredMonthly = weeklyBudgetConfig?.targetMonthlyBudget;
+    if (configuredMonthly !== null && configuredMonthly !== undefined && Number(configuredMonthly) > 0) {
+      return Number(configuredMonthly);
+    }
+    return targetWeeklyBudget * 4;
+  }, [weeklyBudgetConfig, targetWeeklyBudget]);
 
   // Helper to get normalized expense amount for active wallet view
   const getExpenseAmount = (t) => {
@@ -317,27 +330,21 @@ export const WeeklyBudgetView = () => {
     };
   }, [totalExpense, targetMonthlyBudget, daysInMonth, currentDayNumber, isCurrentMonth, isPastMonth, isFutureMonth, moneyLeft, remainingDaysCount, safeDailyBurnRate, activeWallet.currency]);
 
-  // Open config modal with pre-filled target
+  // Open Config Modal with current target
   const handleOpenConfig = () => {
     vibrate('light');
-    setCustomTargetInput(targetMonthlyBudget.toString());
-    setConfigMode('monthly');
+    setConfigMode('weekly');
+    setCustomTargetInput(targetWeeklyBudget.toString());
     setIsConfigOpen(true);
   };
 
-  // Save updated target budget
-  const handleSaveBudget = (valToSave) => {
-    const numeric = parseFloat(valToSave ?? customTargetInput);
-    if (isNaN(numeric) || numeric < 0) return;
-
+  // Save Configured Budget
+  const handleSaveBudget = (weeklyVal, monthlyVal) => {
     vibrate('medium');
-    confetti({
-      particleCount: 35,
-      spread: 50,
-      origin: { y: 0.6 }
+    updateWeeklyBudgetConfig({
+      targetWeeklyBudget: weeklyVal,
+      targetMonthlyBudget: monthlyVal
     });
-
-    updateWeeklyBudgetConfig({ targetMonthlyBudget: numeric });
     setIsConfigOpen(false);
   };
 
@@ -360,15 +367,15 @@ export const WeeklyBudgetView = () => {
             <Coins className="w-5 h-5" />
           </div>
           <div>
-            <span className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold block">
-              Monthly Budget Target
+            <span className="text-[10px] text-emerald-400 uppercase tracking-wider font-bold block">
+              Weekly Budget Target
             </span>
             <div className="flex items-baseline gap-1.5">
-              <span className="text-base font-black text-white tabular-nums">
-                {formatCurrency(targetMonthlyBudget, activeWallet.currency)}
+              <span className="text-lg font-black text-white tabular-nums">
+                {formatCurrency(targetWeeklyBudget, activeWallet.currency)}
               </span>
               <span className="text-[11px] text-gray-400 font-medium">
-                (~{formatCurrency(targetMonthlyBudget / (weeks.length || 4), activeWallet.currency)}/wk)
+                / week (~{formatCurrency(targetMonthlyBudget, activeWallet.currency)}/mo)
               </span>
             </div>
           </div>
@@ -774,16 +781,18 @@ export const WeeklyBudgetView = () => {
             {/* Quick Preset Buttons */}
             <div className="space-y-1.5">
               <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
-                Quick Presets
+                {configMode === 'weekly' ? 'Weekly Presets' : 'Monthly Presets'}
               </span>
               <div className="grid grid-cols-3 gap-1.5">
-                {[500, 1000, 1500, 2000, 3000, 5000].map((presetAmt) => (
+                {(configMode === 'weekly' 
+                  ? [1000, 2000, 2500, 3500, 5000, 10000]
+                  : [5000, 10000, 15000, 20000, 30000, 50000]
+                ).map((presetAmt) => (
                   <button
                     key={presetAmt}
                     onClick={() => {
                       vibrate('light');
                       setCustomTargetInput(presetAmt.toString());
-                      setConfigMode('monthly');
                     }}
                     className="py-1.5 px-2 rounded-xl bg-white/5 hover:bg-white/15 border border-white/10 text-xs font-semibold text-gray-300 hover:text-white transition-all tabular-nums"
                   >
@@ -800,8 +809,11 @@ export const WeeklyBudgetView = () => {
                   <button
                     onClick={() => {
                       vibrate('light');
-                      setCustomTargetInput(totalIncome.toFixed(0));
-                      setConfigMode('monthly');
+                      if (configMode === 'weekly') {
+                        setCustomTargetInput((totalIncome / (weeks.length || 4)).toFixed(0));
+                      } else {
+                        setCustomTargetInput(totalIncome.toFixed(0));
+                      }
                     }}
                     className="flex-1 py-1.5 px-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-[10px] font-bold text-emerald-400 transition-all truncate"
                   >
@@ -812,8 +824,11 @@ export const WeeklyBudgetView = () => {
                   <button
                     onClick={() => {
                       vibrate('light');
-                      setCustomTargetInput(budgetsSum.toFixed(0));
-                      setConfigMode('monthly');
+                      if (configMode === 'weekly') {
+                        setCustomTargetInput((budgetsSum / (weeks.length || 4)).toFixed(0));
+                      } else {
+                        setCustomTargetInput(budgetsSum.toFixed(0));
+                      }
                     }}
                     className="flex-1 py-1.5 px-2 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 text-[10px] font-bold text-purple-400 transition-all truncate"
                   >
@@ -837,10 +852,13 @@ export const WeeklyBudgetView = () => {
                 onClick={() => {
                   const inputVal = parseFloat(customTargetInput);
                   if (isNaN(inputVal) || inputVal <= 0) return;
-                  const finalMonthly = configMode === 'weekly' 
-                    ? inputVal * (weeks.length || 4) 
-                    : inputVal;
-                  handleSaveBudget(finalMonthly);
+                  const weeklyVal = configMode === 'weekly' 
+                    ? Math.round(inputVal) 
+                    : Math.round(inputVal / (weeks.length || 4));
+                  const monthlyVal = configMode === 'weekly' 
+                    ? Math.round(inputVal * (weeks.length || 4)) 
+                    : Math.round(inputVal);
+                  handleSaveBudget(weeklyVal, monthlyVal);
                 }}
                 className="flex-1 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-xs font-bold text-white shadow-lg shadow-emerald-500/30 transition-all flex items-center justify-center gap-1.5"
               >
