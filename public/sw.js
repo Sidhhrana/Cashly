@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cashly-cache-v4';
+const CACHE_NAME = 'cashly-cache-v5';
 
 // Install Service Worker
 self.addEventListener('install', (event) => {
