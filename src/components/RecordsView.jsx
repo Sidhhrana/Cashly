@@ -1,9 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { useFinancials, CATEGORIES, EX_RATES, formatCurrency, vibrate } from '../context/FinancialContext';
 import { 
   Coffee, Car, ShoppingBag, Film, FileText, Home, Heart, Book, 
-  Repeat, Zap, DollarSign, Landmark, ArrowRightLeft, Rocket, Tag,
-  Search, X, RotateCcw, Store, Briefcase, Building2, Coins, Gift
+  Repeat, Zap, DollarSign, Landmark, ArrowRightLeft, Rocket,
+  Store, Briefcase, Building2, Coins, Gift
 } from 'lucide-react';
 
 const ICON_MAP = {
@@ -38,65 +38,15 @@ const formatDateHeader = (dateString) => {
   return new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).format(date);
 };
 
-export const RecordsView = ({ onOpenAdd, onOpenImportScreenshot }) => {
+export const RecordsView = ({ onOpenAdd }) => {
   const { monthTransactions, wallets, activeWalletId, activeWallet, deleteTransaction } = useFinancials();
-
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('all');
-
-  const isFiltered = searchQuery.trim() !== '' || selectedCategoryFilter !== 'all';
-
-  const handleResetFilters = () => {
-    vibrate('light');
-    setSearchQuery('');
-    setSelectedCategoryFilter('all');
-  };
-
-  // Filter monthTransactions by search query and category
-  const filteredTransactions = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-
-    return monthTransactions.filter((tx) => {
-      // Category filter
-      if (selectedCategoryFilter !== 'all') {
-        if (tx.categoryId !== selectedCategoryFilter) {
-          return false;
-        }
-      }
-
-      // Search query filter (matching whereSpent, note, category name, or amount)
-      if (query) {
-        const categoryName = CATEGORIES[tx.categoryId]?.name?.toLowerCase() || (tx.type === 'transfer' ? 'transfer' : '');
-        const whereSpent = (tx.whereSpent || '').toLowerCase();
-        const note = (tx.note || '').toLowerCase();
-        const amountStr = tx.amount != null ? tx.amount.toString() : '';
-        const matchesSearch = whereSpent.includes(query) || note.includes(query) || categoryName.includes(query) || amountStr.includes(query);
-        if (!matchesSearch) return false;
-      }
-
-      return true;
-    });
-  }, [monthTransactions, selectedCategoryFilter, searchQuery]);
-
-  // Total sum of filtered transactions
-  const filteredTotalSum = useMemo(() => {
-    const baseRate = EX_RATES[activeWallet.currency] || 1;
-    return filteredTransactions.reduce((acc, t) => {
-      let amt = Number(t.amount) || 0;
-      if (activeWalletId === 'all' && t.type !== 'transfer') {
-        const w = wallets.find(w => w.id === t.walletId);
-        amt = (amt * (EX_RATES[w?.currency] || 1)) / baseRate;
-      }
-      return acc + amt;
-    }, 0);
-  }, [filteredTransactions, activeWalletId, wallets, activeWallet.currency]);
 
   // Grouped transactions by date
   const groupedTransactions = useMemo(() => {
     const groups = {};
     const baseRate = EX_RATES[activeWallet.currency] || 1;
 
-    filteredTransactions.forEach(t => {
+    monthTransactions.forEach(t => {
       const dateKey = new Date(t.date).toDateString();
       if (!groups[dateKey]) groups[dateKey] = { date: t.date, items: [], total: 0 };
       groups[dateKey].items.push(t);
@@ -117,89 +67,10 @@ export const RecordsView = ({ onOpenAdd, onOpenImportScreenshot }) => {
     });
 
     return Object.values(groups).sort((a, b) => new Date(b.date) - new Date(a.date));
-  }, [filteredTransactions, activeWalletId, wallets, activeWallet.currency]);
+  }, [monthTransactions, activeWalletId, wallets, activeWallet.currency]);
 
   return (
     <div className="px-4 py-4 space-y-4">
-      
-      {/* 1. Search & Category Filter Header */}
-      <div className="space-y-3 bg-[#1C1C1E] p-3.5 rounded-3xl border border-gray-800/80 shadow-md">
-        {/* Search Input & Scan Action */}
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1 flex items-center">
-            <Search className="w-4 h-4 text-gray-500 absolute left-3.5 pointer-events-none" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search merchant, place, note..."
-              className="w-full pl-9.5 pr-8 py-2.5 bg-[#2C2C2E]/70 border border-gray-700/60 rounded-2xl text-xs font-medium text-white placeholder-gray-500 outline-none focus:border-emerald-500 transition-colors"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => { vibrate('light'); setSearchQuery(''); }}
-                className="absolute right-3 p-1 rounded-full text-gray-400 hover:text-white"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Category Filter Pills (All + all CATEGORIES) */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
-          <button
-            onClick={() => { vibrate('light'); setSelectedCategoryFilter('all'); }}
-            className={`flex-shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
-              selectedCategoryFilter === 'all'
-                ? 'bg-emerald-500 text-white border-emerald-400 shadow-sm'
-                : 'bg-[#2C2C2E]/60 text-gray-400 border-gray-800 hover:text-white'
-            }`}
-          >
-            All
-          </button>
-          {Object.values(CATEGORIES).map(cat => {
-            const CatIcon = ICON_MAP[cat.id] || Tag;
-            const isSelected = selectedCategoryFilter === cat.id;
-            return (
-              <button
-                key={cat.id}
-                onClick={() => {
-                  vibrate('light');
-                  setSelectedCategoryFilter(isSelected ? 'all' : cat.id);
-                }}
-                className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border ${
-                  isSelected
-                    ? `${cat.bg} text-white border-white/30 shadow-md font-bold scale-102`
-                    : 'bg-[#2C2C2E]/60 text-gray-400 border-gray-800 hover:text-white hover:border-gray-700'
-                }`}
-              >
-                <CatIcon className="w-3 h-3" />
-                <span>{cat.name}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* 2. Result Summary Pill when filter active */}
-      {isFiltered && (
-        <div className="flex items-center justify-between bg-[#1C1C1E] border border-emerald-500/30 px-3.5 py-2.5 rounded-2xl animate-fade-in shadow-sm">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
-            <span className="text-xs font-bold text-gray-200 truncate">
-              {filteredTransactions.length} {filteredTransactions.length === 1 ? 'transaction' : 'transactions'} • {formatCurrency(filteredTotalSum, activeWallet.currency)}
-            </span>
-          </div>
-          <button
-            onClick={handleResetFilters}
-            className="flex items-center gap-1 text-[11px] font-bold text-emerald-400 hover:text-emerald-300 bg-emerald-500/15 hover:bg-emerald-500/25 px-2.5 py-1 rounded-xl transition-colors active:scale-95 flex-shrink-0 ml-2"
-          >
-            <RotateCcw className="w-3 h-3" />
-            <span>Reset</span>
-          </button>
-        </div>
-      )}
 
       {/* 3. Clean Timeline Activity List / Clean Empty State */}
       {monthTransactions.length === 0 ? (

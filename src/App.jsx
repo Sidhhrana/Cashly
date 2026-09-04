@@ -149,7 +149,6 @@ function MainAppContent() {
           {currentTab === 'transactions' && (
             <RecordsView 
               onOpenAdd={() => setIsAddTxOpen(true)} 
-              onOpenImportScreenshot={() => setIsImportScreenshotOpen(true)}
             />
           )}
           {currentTab === 'weekly' && (
