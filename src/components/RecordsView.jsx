@@ -91,23 +91,6 @@ export const RecordsView = ({ onOpenAdd }) => {
             </button>
           </div>
         </div>
-      ) : filteredTransactions.length === 0 ? (
-        <div className="flex flex-col items-center justify-center text-center space-y-3 py-12 px-6 bg-[#1C1C1E] rounded-3xl border border-gray-800">
-          <div className="w-12 h-12 rounded-2xl bg-[#2C2C2E] flex items-center justify-center text-gray-400">
-            <Search className="w-6 h-6" />
-          </div>
-          <div>
-            <h3 className="text-sm font-extrabold text-white">No transactions found</h3>
-            <p className="text-xs text-gray-400 mt-0.5">No entries match your search query or category filter.</p>
-          </div>
-          <button
-            onClick={handleResetFilters}
-            className="px-4 py-2 bg-[#2C2C2E] hover:bg-gray-700 text-emerald-400 font-bold text-xs rounded-xl border border-gray-700 active:scale-95 transition-all flex items-center gap-1.5"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>Clear Filters</span>
-          </button>
-        </div>
       ) : (
         <div className="space-y-5">
           {groupedTransactions.map((group, index) => (
